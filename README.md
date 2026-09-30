@@ -1,12 +1,8 @@
 # Orvima
 
-**Why should Claude be the only one with a browser?**
+**Your browser, driven by any AI — with a live viewport you control.**
 
-Orvima is a self-hosted, local-first browser agent for **any** AI tool — Claude,
-Cursor, Copilot, or your own Agent. Any MCP client gets a full set of `browse_*`
-hands on **your own Chrome or Edge** — navigate, click, type, extract, verify,
-multi-tab — powered by your logins, running on your machine, while you watch every
-step in a live viewport and stop it whenever you like.
+Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) gets a full set of `browse_*` hands on **your own Chrome or Edge** — navigate, click, type, extract, verify, multi-tab — powered by your logins, running on your machine, while you watch every step in a live viewport and stop it whenever you like.
 
 ```
   any AI tool            MCP / stdio            +--------------------+
@@ -19,6 +15,18 @@ step in a live viewport and stop it whenever you like.
 ```
 
 No cloud, no API key to try it, no account. Install it, point your AI at it, done.
+
+---
+
+## Why Orvima — the three things that actually matter
+
+| | |
+|---|---|
+| **Live viewport** | See exactly what the agent sees — frames stream in real time via SSE. |
+| **Human-in-the-loop** | Pause, resume, or approve any action before it commits. |
+| **Verified steps** | Every action confirms the DOM result (`snapshot`) before the agent proceeds — no silent failures, no guessed success. |
+
+Local-first. Everything runs at `127.0.0.1`. Your cookies, sessions and scrapes never leave your computer. Bring your own brain: plug in any OpenAI-compatible model (OpenAI, OpenRouter, Groq, local Ollama), or use your MCP client (Claude, Cursor, Copilot) as the brain.
 
 ---
 
@@ -35,8 +43,7 @@ orvima demo                        # offline tour — try everything, zero setup
 orvima run "send a message to Acme support"
 ```
 
-That goal gets planned, executed step by step against Orvima's built-in
-simulator, and every step is confirmed before the next one starts.
+That goal gets planned, executed step by step against Orvima's built-in simulator, and every step is confirmed before the next one starts.
 
 **Plug your AI into it (MCP):**
 
@@ -51,22 +58,19 @@ In Claude Code / Claude Desktop / Cursor / Copilot, add:
 ```
 
 Then just tell your assistant things like
-*“open the top hacker news story and summarize the comments”*.
+*"open the top hacker news story and summarize the comments"*.
 It will `browse_navigate`, `browse_snapshot`, and report back — verified, not guessed.
 
 **Use your real browser (real mode):**
 
-Orvima launches **your installed Chrome or MS Edge** — visible, with a persistent
-profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday
-profile is never touched. Want it to drive the browser you already have open?
+Orvima launches **your installed Chrome or MS Edge** — visible, with a persistent profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday profile is never touched. Want it to drive the browser you already have open?
 
 ```bash
 orvima serve --mode real                                 # watch it work at :8301
 orvima run --mode real "compare prices on two flights"   # autonomous, needs a brain
 ```
 
-For autonomous `orvima run`, give it a brain — any OpenAI-compatible endpoint
-(OpenAI, OpenRouter, Groq, or **local Ollama**):
+For autonomous `orvima run`, give it a brain — any OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, or **local Ollama**):
 
 ```bash
 export ORVIMA_LLM_BASE=http://localhost:11434/v1   # or https://api.openai.com/v1
@@ -81,28 +85,27 @@ orvima --attach http://127.0.0.1:9222 mcp --mode real
 
 > `--mode demo` = offline simulator (works everywhere, perfect for CI and tours)
 > `--mode real` = your own installed browser, streaming frames to the UI
-> flags: `--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`,
-> `--headless`, `--max-steps
+> flags: `--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
 
 ---
 
-## What makes Orvima different
+## Orvima vs. the alternatives
 
-- **A browser the agent *lives* in, not a scraper it pings.** The agent opens pages,
-  clicks, types, waits, scrolls — like a careful human with WebDriver powers.
-- **Verify before report.** After every action the agent confirms the result in the
-  DOM (`snapshot`) before saying “done”. You see the same transcript the AI sees.
-- **You are in the loop.** Live viewport, live tool-call log, pause/resume/approve
-  controls. It’s your machine and your accounts.
-- **Local-first.** Everything runs at `127.0.0.1`. Your cookies, sessions and scrapes
-  never leave your computer.
-- **Bring your own brain.** Orvima is tool surface + adaptive planner. The loop
-  re-plans from what the page actually shows (`snapshot`), so it can do *anything
-  on the web* — no pre-scripted flows. Plug in any OpenAI-compatible model
-  (`ORVIMA_LLM_BASE/KEY/MODEL`, incl. local Ollama), or none at all: your MCP
-  client (Claude, Cursor…) is the brain instead.
-- **Boring primitives for smart agents.** `snapshot()` returns a compact,
-  LLM-friendly outline of the page (roles, labels, headings, text) — not a wall of HTML.
+| | Orvima | Playwright MCP | Chrome DevTools MCP | browser-use |
+|---|---|---|---|---|
+| **Live viewport** | ✅ SSE stream | ❌ | ❌ | ❌ |
+| **Human approval** | ✅ pause/resume/approve | ❌ | ❌ | ❌ |
+| **Verified steps** | ✅ DOM-confirmed | ❌ | ❌ | ❌ |
+| **Your logins / your profile** | ✅ persistent | ❌ fresh | ✅ your profile | ❌ fresh |
+| **Local-first / loopback only** | ✅ | ✅ | ✅ | ✅ |
+| **MCP stdio** | ✅ | ✅ | ✅ | ❌ |
+| **Any OpenAI-compatible brain** | ✅ | ❌ | ❌ | ✅ |
+| **Offline demo / CI** | ✅ | ❌ | ❌ | ❌ |
+| **Self-hosted, MIT** | ✅ | ✅ | ✅ | ✅ |
+
+*Comparison based on verifiable features: live viewport, human-in-the-loop controls, DOM-verified actions, and profile persistence. "brain" flexibility refers to supporting any OpenAI-compatible endpoint vs. vendor-locked models.*
+
+---
 
 ## The tools
 
@@ -112,7 +115,7 @@ orvima --attach http://127.0.0.1:9222 mcp --mode real
 | `browse_click(selector)` | click the first element matching a selector |
 | `browse_hover(selector)` | hover (reveals menus, tooltips) |
 | `browse_type(selector, text)` | type into a field, human-ish pace |
-| `browse_fill(selector, text)` | replace a field’s value wholesale |
+| `browse_fill(selector, text)` | replace a field's value wholesale |
 | `browse_select(selector, value)` | pick an option in a dropdown |
 | `browse_press(key)` | press Enter / Escape / Tab / … |
 | `browse_go_back()` | one page back |
@@ -128,7 +131,9 @@ orvima --attach http://127.0.0.1:9222 mcp --mode real
 
 Every tool returns `{"ok": true, ...}` only after the page has confirmed the result.
 
-## How it’s built
+---
+
+## How it's built
 
 | piece | what |
 | --- | --- |
@@ -156,12 +161,7 @@ Every tool returns `{"ok": true, ...}` only after the page has confirmed the res
 
 ## Security
 
-Orvima is **loopback-only by default** and stores nothing of yours remotely. It is a
-tool for *your* browser and *your* accounts: only run it on machines you trust, and
-never expose the API port publicly. Real-mode sessions use your real browser profile —
-an agent can act as you on the websites *you* are already logged into, in a browser
-**you can physically watch**. Pause it (`browse_control` / the UI), read the
-transcript, and let it do one thing at a time.
+Orvima is **loopback-only by default** and stores nothing of yours remotely. It is a tool for *your* browser and *your* accounts: only run it on machines you trust, and never expose the API port publicly. Real-mode sessions use your real browser profile — an agent can act as you on the websites *you* are already logged into, in a browser **you can physically watch**. Pause it (`browse_control` / the UI), read the transcript, and let it do one thing at a time.
 
 ## License
 
