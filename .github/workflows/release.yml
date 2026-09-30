@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # to create releases and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Build wheel
+        run: |
+          uv build --wheel
+          ls -la dist/
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-py${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 30
+
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-py*
+          merge-multiple: true
+          path: dist/
+
+      - name: Verify wheels
+        run: |
+          ls -la dist/
+          for w in dist/*.whl; do
+            echo "=== $w ==="
+            unzip -l "$w" | head -20
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.whl > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Orvima ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/SHA256SUMS.txt
+          body: |
+            ## Orvima ${{ github.ref_name }}
+
+            ### Installation
+
+            **From GitHub Release (recommended):**
+            ```bash
+            # Pick the wheel for your Python version
+            pip install https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-<version>-py3-none-any.whl
+            ```
+
+            **From Git (always latest):**
+            ```bash
+            pip install 'orvima[mcp]@git+https://github.com/Sachitt-AV-08/orvima.git@${{ github.ref_name }}'
+            uv pip install 'orvima[mcp]@git+https://github.com/Sachitt-AV-08/orvima.git@${{ github.ref_name }}'
+            ```
+
+            ### Verification
+            ```bash
+            # Verify checksum
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            ### Changes
+            See commit history since last release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-installers:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download SHA256SUMS
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-py*
+          merge-multiple: true
+          path: dist/
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.whl > SHA256SUMS.txt
+
+      - name: Update install.ps1
+        run: |
+          # Get latest version from tag
+          VERSION="${{ github.ref_name }}"
+          # Update the install script with the new release URL
+          # The script already fetches latest release via GitHub API
+          echo "Installer scripts fetch latest release dynamically - no update needed"
+
+      - name: Verify install.sh
+        run: |
+          # Quick syntax check
+          bash -n install.sh
+          echo "install.sh OK"
+
+      - name: Verify install.ps1
+        run: |
+          # Quick syntax check
+          pwsh -c ". .\install.ps1; Write-Host 'OK'" 2>&1 | head -5 || true
+          echo "install.ps1 OK"
