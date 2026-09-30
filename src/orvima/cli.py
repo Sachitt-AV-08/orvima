@@ -55,13 +55,13 @@ def cmd_mcp(mode: str) -> int:
     return run(demo=(mode == "demo"), name="orvima")
 
 
-def cmd_run(goal: str, mode: str) -> int:
+def cmd_run(goal: str, mode: str, max_steps: int) -> int:
     from .agent import AgentLoop, SessionStore  # noqa: PLC0415
 
     store = SessionStore()
     sess = store.create(mode=mode)
     try:
-        result = AgentLoop(sess).run(goal)
+        result = AgentLoop(sess, max_steps=max_steps).run(goal)
         if not result.get("ok"):
             _out(result)
             return 1
@@ -112,6 +112,14 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run", help="run a goal as a headless agent loop")
     p_run.add_argument("goal")
     p_run.add_argument("--mode", default=None, choices=["demo", "real"])
+    p_run.add_argument("--max-steps", type=int, default=20, help="cap on actions before giving up")
+
+    for p in (p_serve, p_mcp, p_run):
+        p.add_argument("--browser", default=None, choices=["chrome", "msedge", "chromium"],
+                       help="default: autodetect your installed Chrome/Edge")
+        p.add_argument("--attach", default=None, metavar="CDP_URL",
+                       help="drive an already-running browser, e.g. http://127.0.0.1:9222")
+        p.add_argument("--headless", action="store_true", help="no visible window (CI/pod-friendly)")
 
     args = parser.parse_args(argv)
 
@@ -122,6 +130,12 @@ def main(argv: list[str] | None = None) -> int:
             pass
 
     mode = getattr(args, "mode", None) or os.environ.get("ORVIMA_MODE", "demo")
+    if getattr(args, "browser", None):
+        os.environ["ORVIMA_BROWSER"] = args.browser
+    if getattr(args, "attach", None):
+        os.environ["ORVIMA_ATTACH"] = args.attach
+    if getattr(args, "headless", False):
+        os.environ["ORVIMA_HEADLESS"] = "1"
 
     try:
         if not args.command:
@@ -134,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mcp":
             return cmd_mcp(mode)
         if args.command == "run":
-            return cmd_run(args.goal, mode)
+            return cmd_run(args.goal, mode, args.max_steps)
         return 2
     except Exception as exc:  # noqa: BLE001 - friendly CLI errors
         print(f"orvima: {exc}", file=sys.stderr)
