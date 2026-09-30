@@ -1,11 +1,12 @@
 # Orvima
 
-**The browser your AI drives — and you can watch.**
+**Why should Claude be the only one with a browser?**
 
-Orvima is a self-hosted, local-first browser agent for any AI tool. Claude, Cursor,
-Copilot, or any MCP client gets a full set of `browse_*` hands on **your own Chrome
-or Edge** — navigate, click, type, extract, verify, multi-tab — while you watch every
-single step in a live viewport and stop it whenever you like.
+Orvima is a self-hosted, local-first browser agent for **any** AI tool — Claude,
+Cursor, Copilot, or your own Agent. Any MCP client gets a full set of `browse_*`
+hands on **your own Chrome or Edge** — navigate, click, type, extract, verify,
+multi-tab — powered by your logins, running on your machine, while you watch every
+step in a live viewport and stop it whenever you like.
 
 ```
   any AI tool            MCP / stdio            +--------------------+
