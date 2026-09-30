@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login Form</title>
+  <style>
+    body { font-family: system-ui; padding: 2rem; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.5rem; }
+    input { width: 100%; max-width: 300px; padding: 0.5rem; }
+    button { padding: 0.75rem 1.5rem; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .message { margin-top: 1rem; padding: 1rem; border-radius: 4px; display: none; }
+    .message.success { background: #dcfce7; color: #166534; }
+    .message.error { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <h1>Sign In</h1>
+  <form id="login-form">
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required autocomplete="email" />
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password" />
+    </div>
+    <button type="submit" id="submit-btn">Sign In</button>
+  </form>
+  <div id="message" class="message"></div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      const msg = document.getElementById('message');
+      btn.disabled = true;
+      msg.style.display = 'none';
+      msg.className = 'message';
+
+      // Simulate network delay
+      await new Promise(r => setTimeout(r, 800));
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      if (email === 'test@example.com' && password === 'secret123') {
+        msg.textContent = 'Login successful! Redirecting...';
+        msg.classList.add('success');
+      } else {
+        msg.textContent = 'Invalid credentials';
+        msg.classList.add('error');
+      }
+      msg.style.display = 'block';
+      btn.disabled = false;
+    });
+  </script>
+</body>
+</html>

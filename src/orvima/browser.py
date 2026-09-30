@@ -338,3 +338,11 @@ class BrowserController:
                 self._pw.stop()
         except Exception:  # pragma: no cover
             pass
+
+    # Context manager protocol for sync `with` statement
+    def __enter__(self) -> "BrowserController":
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()

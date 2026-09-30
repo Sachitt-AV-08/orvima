@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Slow Loading Page</title>
+  <style>
+    body { font-family: system-ui; padding: 2rem; }
+    .spinner { 
+      border: 4px solid #f3f3f3; 
+      border-top: 4px solid #2563eb; 
+      border-radius: 50%; 
+      width: 40px; 
+      height: 40px; 
+      animation: spin 1s linear infinite; 
+      margin: 2rem auto; 
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .content { display: none; }
+    .content.loaded { display: block; }
+    .status { text-align: center; color: #666; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Slow Loading Content</h1>
+  <div class="spinner" id="spinner"></div>
+  <div class="status" id="status">Loading content...</div>
+  
+  <div class="content" id="content">
+    <h2>Content Loaded Successfully</h2>
+    <p>This content was loaded after a simulated network delay.</p>
+    <ul>
+      <li>Item 1: First loaded item</li>
+      <li>Item 2: Second loaded item</li>
+      <li>Item 3: Third loaded item</li>
+    </ul>
+    <p>All content is now visible and interactive.</p>
+    <button id="action-btn">Click Me</button>
+  </div>
+
+  <script>
+    // Simulate slow network - content appears after 2 seconds
+    setTimeout(() => {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('status').textContent = 'Content loaded!';
+      document.getElementById('content').classList.add('loaded');
+    }, 2000);
+
+    document.getElementById('action-btn').addEventListener('click', () => {
+      alert('Button works! Content is fully interactive.');
+    });
+  </script>
+</body>
+</html>
