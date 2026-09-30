@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: uv sync --extra mcp --extra dev
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Test (offline — no browser needed)
+        run: uv run pytest
+      - name: CLI smoke (demo)
+        run: |
+          uv run orvima --version
+          uv run orvima run "check the products page" --mode demo
