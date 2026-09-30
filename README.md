@@ -47,15 +47,59 @@ That goal gets planned, executed step by step against Orvima's built-in simulato
 
 **Plug your AI into it (MCP):**
 
-In Claude Code / Claude Desktop / Cursor / Copilot, add:
+Copy the exact config for your client:
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 
 ```json
 {
   "mcpServers": {
-    "orvima": { "command": "orvima", "args": ["mcp", "--mode", "demo"], "type": "stdio" }
+    "orvima": {
+      "command": "orvima",
+      "args": ["mcp", "--mode", "demo"],
+      "type": "stdio"
+    }
   }
 }
 ```
+
+**Claude Code** (add to your project or global config):
+
+```bash
+claude mcp add orvima orvima mcp --mode demo
+```
+
+**Cursor** (`.cursor/mcp.json` in your project root):
+
+```json
+{
+  "mcpServers": {
+    "orvima": {
+      "command": "orvima",
+      "args": ["mcp", "--mode", "demo"],
+      "type": "stdio"
+    }
+  }
+}
+```
+
+**Copilot / VS Code** (`settings.json`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "orvima": {
+        "command": "orvima",
+        "args": ["mcp", "--mode", "demo"],
+        "type": "stdio"
+      }
+    }
+  }
+}
+```
+
+Use `--mode real` instead of `--mode demo` to drive your real browser (requires `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` for autonomous runs).
 
 Then just tell your assistant things like
 *"open the top hacker news story and summarize the comments"*.
