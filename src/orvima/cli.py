@@ -17,7 +17,7 @@ import sys
 import urllib.request
 
 from . import __version__
-from .browser import detect_channel, DEFAULT_PROFILE
+from .browser import DEFAULT_PROFILE, detect_channel
 
 
 def _out(obj: dict) -> None:
@@ -124,7 +124,6 @@ def cmd_doctor() -> int:
     checks.append({"name": "Profile dir", "ok": profile_ok, "detail": detail})
 
     # 3. API port free
-    port = 8301
     port_free = True
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

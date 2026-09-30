@@ -340,7 +340,7 @@ class BrowserController:
             pass
 
     # Context manager protocol for sync `with` statement
-    def __enter__(self) -> "BrowserController":
+    def __enter__(self) -> BrowserController:
         self.start()
         return self
 
