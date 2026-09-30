@@ -35,10 +35,7 @@ _BROWSER_PATHS = {
     ),
 }
 
-# Compact outline of what matters on a page: interactive elements, headings,
-# inputs and the main visible text. Stable across Chromium versions.
-_OUTLINE_JS = """
-() => {
+_OUTLINE_JS = """(() => {
   const out = [];
   const text = (el) => (el.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 400);
   const role = (el) => {
@@ -46,7 +43,7 @@ _OUTLINE_JS = """
     return el.getAttribute("role") || "";
   };
   const items = document.querySelectorAll(
-    "a,button,input,textarea,select,label,h1,h2,h3,h4,h5,h6,[role=\"button\"],[role=\"link\"],[role=\"textbox\"],[aria-label]"
+    "a,button,input,textarea,select,label,h1,h2,h3,h4,h5,h6,[role='button'],[role='link'],[role='textbox'],[aria-label]"
   );
   for (const el of items) {
     const r = role(el);
@@ -59,7 +56,7 @@ _OUTLINE_JS = """
   }
   const body = document.body ? text(document.body) : "";
   return { url: location.href, title: document.title, items: out.slice(0, 120), body: body.slice(0, 3000) };
-}
+})()
 """
 
 
