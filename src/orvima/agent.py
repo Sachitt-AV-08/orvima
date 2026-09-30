@@ -6,11 +6,17 @@ runs one goal as an adaptive loop: snapshot -> planner picks the next single
 browse_* action -> execute -> verify -> repeat, until the planner reports done.
 Without an LLM key, the demo planner drives the offline site; everything is
 runnable in CI and demos.
+
+Concurrency: each Session owns its own BrowserController instance, so multiple
+sessions run independently. The SessionStore manages the session registry.
+Human takeover: pause/resume + optional approve-before-action gate.
+Redaction: password fields and obvious secrets masked in snapshots/transcripts.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 import uuid
@@ -43,6 +49,61 @@ class EventBus:
         with self._lock:
             for q in self._queues:
                 q.append(event)
+
+
+def _redact_sensitive(data: dict) -> dict:
+    """Redact password fields, API keys, and other secrets from data structures.
+
+    Applied to snapshots, screenshots metadata, and transcript logs before
+    they leave the process (e.g., to the UI or an LLM).
+    """
+    if not isinstance(data, dict):
+        return data
+    redacted = {}
+    sensitive_keys = {
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "auth",
+        "authorization",
+        "key",
+        "credit_card",
+        "ssn",
+        "cvv",
+    }
+    for k, v in data.items():
+        kl = k.lower()
+        if any(s in kl for s in sensitive_keys):
+            redacted[k] = "***REDACTED***"
+        elif isinstance(v, dict):
+            redacted[k] = _redact_sensitive(v)
+        elif isinstance(v, list):
+            redacted[k] = [_redact_sensitive(item) if isinstance(item, dict) else item for item in v]
+        else:
+            redacted[k] = v
+    return redacted
+
+
+def _redact_html(html: str) -> str:
+    """Redact sensitive content in HTML (password fields, etc.)."""
+    # Mask password input values
+    html = re.sub(
+        r'(<input[^>]*type=["\']password["\'][^>]*value=["\'])([^"\']*)(["\'])',
+        r"\1***REDACTED***\3",
+        html,
+        flags=re.IGNORECASE,
+    )
+    # Mask data-* attributes that look sensitive
+    html = re.sub(
+        r'(data-(?:password|secret|token|key|auth)=["\'])([^"\']*)(["\'])',
+        r"\1***REDACTED***\3",
+        html,
+        flags=re.IGNORECASE,
+    )
+    return html
 
 
 @dataclass
