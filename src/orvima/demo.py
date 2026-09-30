@@ -8,6 +8,8 @@ records what the agent did, which doubles as the demo transcript.
 
 from __future__ import annotations
 
+from .errors import BrowserError
+
 _PAGES = {
     "https://acme.dev": {
         "title": "Acme Hardware",
@@ -44,6 +46,8 @@ class DemoBrowser:
     def __init__(self, base_url: str = "https://acme.dev"):
         self._url = base_url
         self._history: list[str] = []
+        self._tabs: list[str] = []
+        self._active = 0
         self.log: list[str] = []
         self.sent: list[dict] = []
         self._form: dict = {}
@@ -73,6 +77,10 @@ class DemoBrowser:
             self.sent.append({"action": "cart", "url": self._url})
         return self._state()
 
+    def hover(self, selector: str) -> dict:
+        self.log.append(f"hover {selector}")
+        return self._state()
+
     def type(self, selector: str, text: str) -> dict:
         self.log.append(f"type {selector} = {text!r}")
         return {"typed": text, **self._state()}
@@ -81,6 +89,53 @@ class DemoBrowser:
         self._form[selector] = text
         self.log.append(f"fill {selector} = {text!r}")
         return {"value": text, **self._state()}
+
+    def select(self, selector: str, value: str) -> dict:
+        self._form[selector] = value
+        self.log.append(f"select {selector} = {value!r}")
+        return {"selected": [value], "value": value, **self._state()}
+
+    def wait_for(self, selector: str, timeout_ms: int = 10000) -> dict:
+        self.log.append(f"wait_for {selector}")
+        return self._state()
+
+    def open_tab(self, url: str) -> dict:
+        if url not in _PAGES:
+            url = "https://acme.dev"
+        self._tabs.append(self._url)
+        self._url = url
+        self._active = len(self._tabs) - 1
+        self.log.append(f"open_tab {url}")
+        return {"tabs": len(self._tabs) + 1, **self._state()}
+
+    def list_tabs(self) -> dict:
+        urls = self._tabs + [self._url]
+        return {
+            "tabs": [
+                {"index": i, "url": u, "title": _PAGES[u]["title"], "active": i == len(urls) - 1}
+                for i, u in enumerate(urls)
+            ]
+        }
+
+    def switch_tab(self, index: int) -> dict:
+        idx = int(index)
+        if idx < 0 or idx > len(self._tabs):
+            raise BrowserError(f"no tab at index {index!r}")
+        urls = self._tabs + [self._url]
+        self._url = urls[idx]
+        self._active = idx
+        self.log.append(f"switch_tab {idx}")
+        return {"index": idx, **self._state()}
+
+    def close_tab(self, index: int) -> dict:
+        idx = int(index)
+        if len(self._tabs) + 1 <= 1 or idx < 0 or idx >= len(self._tabs) + 1:
+            raise BrowserError("refusing to close the last tab")
+        self._tabs.pop(idx)
+        self._active = min(self._active, len(self._tabs) - 1)
+        self._url = self._tabs[self._active] if self._tabs else "https://acme.dev"
+        self.log.append(f"close_tab {idx}")
+        return {"closed": idx, "tabs": len(self._tabs) + 1, **self._state()}
 
     def press(self, key: str) -> dict:
         if key.lower() == "enter":

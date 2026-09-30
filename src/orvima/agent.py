@@ -2,9 +2,10 @@
 
 A Session owns one browser, a transcript, and an EventBus that streams what
 the agent is doing to the UI (tool calls, results, live frames). The AgentLoop
-executes one goal as a sequence of browse_* tool calls. Without an LLM key it
-falls back to a deterministic scripted planner (demo site), so the whole thing
-is runnable offline and in CI.
+runs one goal as an adaptive loop: snapshot -> planner picks the next single
+browse_* action -> execute -> verify -> repeat, until the planner reports done.
+Without an LLM key, the demo planner drives the offline site; everything is
+runnable in CI and demos.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import os
 import threading
 import time
 import uuid
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -98,10 +98,14 @@ class Session:
 
 
 class AgentLoop:
-    """Runs a goal: plan steps -> execute browse_* tools -> verify each step."""
+    """Runs a goal: snapshot -> decide -> act -> verify, until done."""
 
-    def __init__(self, session: Session, planner: Callable[[str], list[dict]] | None = None):
+    def __init__(self, session: Session, planner=None, max_steps: int = 20):
+        from .planner import planner_for
+
         self.session = session
+        self.max_steps = max_steps
+        self.history: list[dict] = []
         self.planner = planner or planner_for(session.mode)
 
     def run(self, goal: str) -> dict:
@@ -111,29 +115,32 @@ class AgentLoop:
         sess.bus.emit({"type": "status", "status": "running"})
         sess.log("goal", goal=goal)
         try:
-            steps = self.planner(goal)
-            if not steps:
-                raise RuntimeError("planner produced no steps")
-            sess.log("plan", steps=steps)
-            for i, step in enumerate(steps, start=1):
+            for step in range(1, self.max_steps + 1):
                 sess._paused.wait()  # human pause/approve gate
-                name = step.get("tool", "")
-                args = step.get("args", {})
-                sess.log("tool_call", step=i, tool=name, args=args)
+                decision = self.planner.decide(goal, self.history)
+                if decision.get("done"):
+                    summary = decision.get("summary", "done")
+                    sess.log("summary", summary=summary)
+                    sess.status = "done"
+                    sess.bus.emit({"type": "status", "status": "done"})
+                    sess.maybe_frame(force=True)
+                    return {"ok": True, "steps": step, "goal": goal, "summary": summary}
+
+                name = decision["tool"]
+                args = decision.get("args", {})
+                sess.log("tool_call", step=step, tool=name, args=args)
                 try:
                     result = self._run_tool(name, args)
-                except Exception as exc:  # make sure UI always gets an answer
+                except Exception as exc:  # keep the UI informed on bad args
                     result = {"ok": False, "error": str(exc)}
-                sess.log("tool_result", step=i, result=result)
+                sess.log("tool_result", step=step, result=result)
+                self.history.append({"kind": "tool", "step": step, "tool": name, "args": args, "result": result})
                 sess.maybe_frame()
                 if result.get("ok") is not True:
                     raise RuntimeError(
-                        f"step {i} ({name}) failed: {result.get('error', 'unknown')}"
+                        f"step {step} ({name}) failed: {result.get('error', 'unknown')}"
                     )
-            sess.status = "done"
-            sess.bus.emit({"type": "status", "status": "done"})
-            sess.maybe_frame(force=True)
-            return {"ok": True, "steps": len(steps), "goal": goal}
+            raise RuntimeError(f"did not finish in {self.max_steps} steps")
         except Exception as exc:
             sess.status = "error"
             sess.bus.emit({"type": "status", "status": "error"})
@@ -142,49 +149,6 @@ class AgentLoop:
 
     def _run_tool(self, name: str, args: dict) -> dict:
         return tools.call_tool(self.session.browser, name, args)
-
-
-# ------------------------------------------------------------ planners -------
-
-def _demo_planner(goal: str) -> list[dict]:
-    """Deterministic scripted plan for the acme.dev demo site."""
-    g = goal.lower()
-    if any(k in g for k in ("contact", "message", "support", "email")):
-        return [
-            {"tool": "navigate", "args": {"url": "https://acme.dev/contact"}},
-            {"tool": "fill", "args": {"selector": "input[name=name]", "text": "Orvima"}},
-            {"tool": "fill", "args": {"selector": "input[name=email]", "text": "hello@orvima.dev"}},
-            {"tool": "fill", "args": {"selector": "textarea[name=message]", "text": goal}},
-            {"tool": "click", "args": {"selector": "button:has-text('Send')"}},
-            {"tool": "snapshot", "args": {}},
-        ]
-    if any(k in g for k in ("product", "bolt", "anchor", "shop", "cutter")):
-        return [
-            {"tool": "navigate", "args": {"url": "https://acme.dev/products"}},
-            {"tool": "snapshot", "args": {}},
-        ]
-    return [
-        {"tool": "navigate", "args": {"url": "https://acme.dev"}},
-        {"tool": "snapshot", "args": {}},
-    ]
-
-
-def planner_for(mode: str) -> Callable[[str], list[dict]]:
-    base = os.environ.get("ORVIMA_LLM_BASE")
-    key = os.environ.get("ORVIMA_LLM_KEY")
-    model = os.environ.get("ORVIMA_LLM_MODEL", "gpt-4o-mini")
-    if mode == "demo" or not (base and key):
-        return _demo_planner
-    return _llm_planner(base, key, model)
-
-
-def _llm_planner(base: str, key: str, model: str) -> Callable[[str], list[dict]]:
-    def planner(goal: str) -> list[dict]:
-        from .planner_llm import llm_plan
-
-        return llm_plan(goal, base=base, key=key, model=model)
-
-    return planner
 
 
 # -------------------------------------------------------------- store -------

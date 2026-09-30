@@ -24,6 +24,30 @@ def tool_click(browser, selector: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def tool_hover(browser, selector: str) -> dict:
+    """Hover the first element matching a selector (reveals menus/tooltips)."""
+    try:
+        return {"ok": True, **browser.hover(selector)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_select(browser, selector: str, value: str) -> dict:
+    """Pick an option in a <select> dropdown by value or label."""
+    try:
+        return {"ok": True, **browser.select(selector, value)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_wait_for(browser, selector: str, timeout_ms: int = 10000) -> dict:
+    """Wait until an element matching a selector exists (e.g. after a submit)."""
+    try:
+        return {"ok": True, **browser.wait_for(selector, timeout_ms)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def tool_type(browser, selector: str, text: str) -> dict:
     """Type text into a field at a human-ish pace (after focusing it)."""
     try:
@@ -109,9 +133,45 @@ def tool_eval(browser, expression: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+# --------------------------------------------------------------- tabs ----
+def tool_open_tab(browser, url: str) -> dict:
+    """Open a URL in a new tab and switch to it."""
+    try:
+        return {"ok": True, **browser.open_tab(url)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_list_tabs(browser, *_args, **_kw) -> dict:
+    """List open tabs with index, url and which one is active."""
+    try:
+        return {"ok": True, **browser.list_tabs()}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_switch_tab(browser, index: int) -> dict:
+    """Switch to another open tab by its list index."""
+    try:
+        return {"ok": True, **browser.switch_tab(index)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_close_tab(browser, index: int) -> dict:
+    """Close a tab by index (never the last remaining one)."""
+    try:
+        return {"ok": True, **browser.close_tab(index)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 TOOLS = (
     tool_navigate,
     tool_click,
+    tool_hover,
+    tool_select,
+    tool_wait_for,
     tool_type,
     tool_fill,
     tool_press,
@@ -122,6 +182,10 @@ TOOLS = (
     tool_screenshot,
     tool_extract,
     tool_eval,
+    tool_open_tab,
+    tool_list_tabs,
+    tool_switch_tab,
+    tool_close_tab,
 )
 
 TOOL_NAMES = {fn.__name__[5:] for fn in TOOLS}
