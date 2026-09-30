@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orvima"
+version = "0.1.0"
+description = "An agent-operated browser with a human-grade UI. Any AI tool gets eyes and hands on the web, on your machine."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["browser", "agent", "mcp", "automation", "ai", "local-first", "selfhosted"]
+authors = [{ name = "Sachitt", email = "sachittav@gmail.com" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Internet :: WWW/HTTP :: Browsers",
+]
+dependencies = [
+  "playwright>=1.45",
+  "fastapi>=0.111",
+  "uvicorn>=0.30",
+  "sse-starlette>=1.8",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.6",
+  "mcp>=1.2",
+]
+
+[project.scripts]
+orvima = "orvima.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orvima"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

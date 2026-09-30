@@ -1,0 +1,23 @@
+# --- python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# --- node / next
+node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+npm-debug.log*
+
+# --- local state
+.parley/
+*.log
+.DS_Store
