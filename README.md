@@ -207,6 +207,20 @@ Every tool returns `{"ok": true, ...}` only after the page has confirmed the res
 
 Orvima is **loopback-only by default** and stores nothing of yours remotely. It is a tool for *your* browser and *your* accounts: only run it on machines you trust, and never expose the API port publicly. Real-mode sessions use your real browser profile — an agent can act as you on the websites *you* are already logged into, in a browser **you can physically watch**. Pause it (`browse_control` / the UI), read the transcript, and let it do one thing at a time.
 
+## Known limits
+
+| Area | Status | Notes |
+|------|--------|-------|
+| CAPTCHAs / 2FA | ❌ Not supported | Human takeover (pause/resume) is the intended workflow |
+| File dialogs | ❌ Not supported | Human takeover required |
+| Iframes | ⚠️ Partial | Detected and flagged in snapshot; not traversed |
+| Shadow DOM | ⚠️ Partial | Hosts detected and flagged; not traversed |
+| Browser updates | ⚠️ May break selectors | Fixture tests catch regressions; update fixtures when needed |
+| CAPTCHAs on login | ❌ Not solvable | Pause, solve manually, resume |
+| Media / downloads | ❌ Not supported | On roadmap |
+
+These are honest constraints — not bugs. Orvima is designed for human-in-the-loop automation where the human handles the hard edge cases.
+
 ## License
 
 MIT. Free forever. Self-host it, fork it, run it on your own boxes.

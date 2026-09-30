@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest a new capability for Orvima.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Before filing, please check the [Roadmap](#roadmap) and [Known limits](#known-limits) in the README to see if it's already planned or a known limitation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point. Why is this needed?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work? API, CLI, MCP tool, UI?
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which layer?
+      options:
+        - CLI
+        - Python SDK
+        - HTTP API / UI
+        - MCP server
+        - Browser/Tools
+        - Demo/Simulator
+      validations:
+        required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or existing tools that partially solve this?
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the Roadmap and Known Limits — this isn't already planned or a known limit.
+          required: true
+        - label: I'm willing to help implement or test this.
+          required: false

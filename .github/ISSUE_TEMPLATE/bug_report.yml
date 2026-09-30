@@ -1,0 +1,81 @@
+name: Bug report
+description: Something broke. Include the reproduction - the `--demo` sim makes this easy.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report. Be kind; bugs are ours, not yours.
+  - type: input
+    id: version
+    attributes:
+      label: orvima version
+      description: `orvima --version` (or the commit you're on).
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - CLI
+        - Python SDK
+        - HTTP API
+        - MCP server
+        - Demo simulator
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows/macOS/Linux, browser (Chrome/Edge/Chromium), Orvima mode (demo/real).
+    validations:
+      required: true
+  - type: input
+    id: orvima_version
+    attributes:
+      label: Orvima version / commit
+      description: `orvima --version` or git commit hash.
+    validations:
+      required: true
+  - type: input
+    id: browser_version
+    attributes:
+      label: Browser version
+      description: Chrome/Edge/Chromium version (e.g., 128.0.6613.120). Run `chrome --version` or `msedge --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Please prefer a `orvima --demo` reproduction when possible.
+      placeholder: |
+        1. Run `orvima --demo run "open github.com"`
+        2. ...
+        3. Error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Actual output / logs
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Honest checks
+      options:
+        - label: I removed any phone numbers, names, tokens, or passwords from the logs.
+          required: true
+        - label: I checked there isn't already an open issue about this.
+          required: true
