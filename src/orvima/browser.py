@@ -42,20 +42,52 @@ _OUTLINE_JS = """(() => {
     if (el.tagName === "A" || el.tagName === "BUTTON") return el.tagName.toLowerCase();
     return el.getAttribute("role") || "";
   };
+  const isVisible = (el) => {
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
   const items = document.querySelectorAll(
     "a,button,input,textarea,select,label,h1,h2,h3,h4,h5,h6,[role='button'],[role='link'],[role='textbox'],[aria-label]"
   );
+  let idx = 0;
   for (const el of items) {
+    if (!isVisible(el)) continue;
+    idx++;
+    const ref = "e" + idx;
+    try { el.setAttribute("data-orvima-ref", ref); } catch (_) {}
     const r = role(el);
     const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") ||
                   el.getAttribute("title") || (el.tagName === "LABEL" ? text(el) : "");
     const own = text(el);
     const val = (el.value !== undefined && el.value) ? ` value=${JSON.stringify(String(el.value).slice(0, 80))}` : "";
     const info = [r, label || own, val].filter(Boolean).join(" | ");
-    if (info) out.push(info);
+    if (info) {
+      out.push({
+        ref,
+        tag: el.tagName.toLowerCase(),
+        role: r,
+        label: label || own,
+        text: own,
+        value: el.value || "",
+      });
+    }
+    if (idx >= 60) break;
   }
   const body = document.body ? text(document.body) : "";
-  return { url: location.href, title: document.title, items: out.slice(0, 120), body: body.slice(0, 3000) };
+  const iframeCount = document.querySelectorAll("iframe").length;
+  const shadowHosts = document.querySelectorAll("*[shadow-root]").length;
+  return {
+    url: location.href,
+    title: document.title,
+    items: out,
+    body: body.slice(0, 3000),
+    truncated: out.length >= 60,
+    iframes: iframeCount ? iframeCount + " iframe(s) — not supported yet" : "none",
+    shadowDom: shadowHosts ? shadowHosts + " shadow host(s) — not supported yet" : "none"
+  };
 })()
 """
 
@@ -130,16 +162,29 @@ class BrowserController:
     def _state(self) -> dict:
         return {"url": self.page.url, "title": self.page.title()}
 
+    def _dom_signature(self) -> str:
+        """Lightweight signature of DOM structure for click verification."""
+        try:
+            count = self.page.evaluate("document.querySelectorAll('*').length")
+            title = self.page.title()
+            return f"{title}|{count}"
+        except Exception:
+            return ""
+
     # ------------------------------------------------------------- actions ----
     def navigate(self, url: str) -> dict:
-        return self._goto(url)
+        self._goto(url)
+        return {**self._state(), "load_state": "domcontentloaded", "verified": True}
 
     def click(self, selector: str) -> dict:
+        before_sig = self._dom_signature()
         try:
             self.page.click(selector, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"click {selector!r} failed: {exc}") from exc
-        return self._state()
+        after_sig = self._dom_signature()
+        verified = before_sig != after_sig
+        return {**self._state(), "verified": verified}
 
     def hover(self, selector: str) -> dict:
         try:
@@ -154,21 +199,34 @@ class BrowserController:
             self.page.keyboard.type(text, delay=24)
         except Exception as exc:
             raise BrowserError(f"type into {selector!r} failed: {exc}") from exc
-        return {"typed": text, **self._state()}
+        value = ""
+        try:
+            value = self.page.input_value(selector)
+        except Exception:
+            pass
+        verified = value == text
+        return {"typed": text, "value": value, "verified": verified, **self._state()}
 
     def fill(self, selector: str, text: str) -> dict:
         try:
             self.page.fill(selector, text, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"fill {selector!r} failed: {exc}") from exc
-        return {"value": text, **self._state()}
+        value = ""
+        try:
+            value = self.page.input_value(selector)
+        except Exception:
+            pass
+        verified = value == text
+        return {"value": value, "verified": verified, **self._state()}
 
     def select(self, selector: str, value: str) -> dict:
         try:
             values = self.page.select_option(selector, value, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"select {selector!r}={value!r} failed: {exc}") from exc
-        return {"selected": values, **self._state()}
+        verified = value in (values or [])
+        return {"selected": values, "verified": verified, **self._state()}
 
     def press(self, key: str) -> dict:
         try:

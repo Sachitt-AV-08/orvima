@@ -65,17 +65,34 @@ class DemoBrowser:
         self._history.append(self._url)
         self._url = url
         self.log.append(f"navigate {url}")
-        return self._state()
+        return {**self._state(), "load_state": "domcontentloaded", "verified": True}
 
     def click(self, selector: str) -> dict:
+        old_url = self._url
         for label, target in _LINKS:
             if label.lower() in selector.lower() and target != self._url:
                 self._url = target
                 break
+        # Also support ref resolution: [data-orvima-ref="eN"]
+        if self._url == old_url and selector.startswith('[data-orvima-ref="e') and selector.endswith('"]'):
+            ref = selector[20:-2]  # extract eN
+            try:
+                idx = int(ref[1:]) - 1
+                page = _PAGES.get(self._url, _PAGES["https://acme.dev"])
+                if 0 <= idx < len(page["items"]):
+                    item_str = page["items"][idx]
+                    tag, _, label = item_str.partition(" | ")
+                    for link_label, target in _LINKS:
+                        if link_label.lower() == label.lower() and target != self._url:
+                            self._url = target
+                            break
+            except Exception:
+                pass
         self.log.append(f"click {selector}")
         if selector.lower().find("add to cart") >= 0:
             self.sent.append({"action": "cart", "url": self._url})
-        return self._state()
+        verified = self._url != old_url
+        return {**self._state(), "verified": verified}
 
     def hover(self, selector: str) -> dict:
         self.log.append(f"hover {selector}")
@@ -83,17 +100,17 @@ class DemoBrowser:
 
     def type(self, selector: str, text: str) -> dict:
         self.log.append(f"type {selector} = {text!r}")
-        return {"typed": text, **self._state()}
+        return {"typed": text, "value": text, "verified": True, **self._state()}
 
     def fill(self, selector: str, text: str) -> dict:
         self._form[selector] = text
         self.log.append(f"fill {selector} = {text!r}")
-        return {"value": text, **self._state()}
+        return {"value": text, "verified": True, **self._state()}
 
     def select(self, selector: str, value: str) -> dict:
         self._form[selector] = value
         self.log.append(f"select {selector} = {value!r}")
-        return {"selected": [value], "value": value, **self._state()}
+        return {"selected": [value], "value": value, "verified": True, **self._state()}
 
     def wait_for(self, selector: str, timeout_ms: int = 10000) -> dict:
         self.log.append(f"wait_for {selector}")
@@ -169,7 +186,26 @@ class DemoBrowser:
 
     def snapshot(self) -> dict:
         page = _PAGES.get(self._url, _PAGES["https://acme.dev"])
-        return {"url": self._url, "title": page["title"], "items": list(page["items"]), "body": page["body"]}
+        items = []
+        for i, item_str in enumerate(page["items"], 1):
+            tag, _, label = item_str.partition(" | ")
+            items.append({
+                "ref": f"e{i}",
+                "tag": tag.lower(),
+                "role": tag.lower() if tag.lower() in ("a", "button") else "",
+                "label": label,
+                "text": label,
+                "value": ""
+            })
+        return {
+            "url": self._url,
+            "title": page["title"],
+            "items": items,
+            "body": page["body"],
+            "truncated": False,
+            "iframes": "none",
+            "shadowDom": "none"
+        }
 
     def screenshot(self) -> dict:
         # A tiny colored PNG so the UI always has a real frame (demo mode).

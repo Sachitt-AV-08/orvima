@@ -7,6 +7,51 @@ on one tested contract, and lets docs/agent-visible docstrings be exact.
 
 from __future__ import annotations
 
+import re
+
+from .errors import BrowserError
+
+REF_RE = re.compile(r"^e\d+$")
+
+
+def _resolve(browser, ref: str | None, selector: str | None) -> str:
+    """Resolve a ref or selector to a CSS selector the browser understands.
+
+    - If ``ref`` is given, it must match ``e<number>`` and is converted to
+      ``[data-orvima-ref="eN"]`` which works on the real browser and is
+      intercepted by DemoBrowser for scripted navigation.
+    - If only ``selector`` is given, it is passed through unchanged.
+    - Exactly one of ``ref`` or ``selector`` must be provided.
+    """
+    if ref is not None and selector is not None:
+        raise BrowserError("provide either 'ref' or 'selector', not both")
+    if ref is not None:
+        if not REF_RE.match(ref):
+            raise BrowserError(f"invalid ref {ref!r} — expected e.g. e12")
+        return f'[data-orvima-ref="{ref}"]'
+    if selector is None:
+        raise BrowserError("provide 'ref' or 'selector'")
+    return selector
+
+
+def _candidates(browser):
+    """Return a list of candidate elements from a fresh snapshot for error recovery."""
+    try:
+        snap = browser.snapshot()
+        return snap.get("items", [])[:10]
+    except Exception:
+        return []
+
+
+def _error(exc, candidates=None):
+    """Build a structured error dict with optional recovery candidates."""
+    msg = str(exc)
+    err = {"ok": False, "error": msg}
+    if candidates:
+        err["candidates"] = candidates
+        err["error_type"] = "not_found"
+    return err
+
 
 def tool_navigate(browser, url: str) -> dict:
     """Open a URL. Waits for the page to be interactive and returns URL + title."""
@@ -16,52 +61,68 @@ def tool_navigate(browser, url: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_click(browser, selector: str) -> dict:
-    """Click the first element matching a CSS selector or Playwright locator."""
+def tool_click(browser, selector: str | None = None, ref: str | None = None) -> dict:
+    """Click an element by CSS selector OR stable ref (e.g. 'e12' from snapshot).
+
+    Prefer refs — they survive DOM churn. Returns ``verified: true`` if the
+    click caused a navigation or DOM mutation; otherwise ``verified: false``.
+    """
     try:
-        return {"ok": True, **browser.click(selector)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.click(sel)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
-def tool_hover(browser, selector: str) -> dict:
-    """Hover the first element matching a selector (reveals menus/tooltips)."""
+def tool_hover(browser, selector: str | None = None, ref: str | None = None) -> dict:
+    """Hover an element by selector or ref."""
     try:
-        return {"ok": True, **browser.hover(selector)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.hover(sel)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
-def tool_select(browser, selector: str, value: str) -> dict:
-    """Pick an option in a <select> dropdown by value or label."""
+def tool_select(browser, value: str, selector: str | None = None, ref: str | None = None) -> dict:
+    """Pick an option in a <select> by value or label, using selector or ref."""
     try:
-        return {"ok": True, **browser.select(selector, value)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.select(sel, value)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
-def tool_wait_for(browser, selector: str, timeout_ms: int = 10000) -> dict:
-    """Wait until an element matching a selector exists (e.g. after a submit)."""
+def tool_wait_for(browser, selector: str | None = None, ref: str | None = None, timeout_ms: int = 10000) -> dict:
+    """Wait until an element matching selector or ref exists."""
     try:
-        return {"ok": True, **browser.wait_for(selector, timeout_ms)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.wait_for(sel, timeout_ms)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
-def tool_type(browser, selector: str, text: str) -> dict:
-    """Type text into a field at a human-ish pace (after focusing it)."""
+def tool_type(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
+    """Type text into a field at a human-ish pace, by selector or ref.
+
+    Returns the field's actual value after typing and ``verified``.
+    """
     try:
-        return {"ok": True, **browser.type(selector, text)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.type(sel, text)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
-def tool_fill(browser, selector: str, text: str) -> dict:
-    """Replace the value of a field wholesale."""
+def tool_fill(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
+    """Replace the value of a field wholesale, by selector or ref.
+
+    Returns the field's actual value and ``verified``.
+    """
     try:
-        return {"ok": True, **browser.fill(selector, text)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.fill(sel, text)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
 def tool_press(browser, key: str) -> dict:
@@ -117,12 +178,13 @@ def tool_screenshot(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_extract(browser, selector: str) -> dict:
-    """Extract text from the first element matching a selector."""
+def tool_extract(browser, selector: str | None = None, ref: str | None = None) -> dict:
+    """Extract text from the first element matching a selector or ref."""
     try:
-        return {"ok": True, **browser.extract(selector)}
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.extract(sel)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error(exc, _candidates(browser))
 
 
 def tool_eval(browser, expression: str) -> dict:
