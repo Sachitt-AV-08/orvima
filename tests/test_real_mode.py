@@ -7,10 +7,28 @@ and selector rot that every browser agent hits.
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import sys
 
 import pytest
 
 from orvima.browser import BrowserController
+
+# Skip all real-mode tests if no browser executable is available
+# (Playwright's bundled chromium may not be installed in CI without explicit install)
+_skip_reason = None
+if shutil.which("chromium") is None and shutil.which("chromium-browser") is None:
+    # Check common Playwright install locations
+    import os
+    pw_browsers = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+    if pw_browsers and not any(Path(pw_browsers).glob("chromium-*")):
+        _skip_reason = "No Chromium/Chrome executable found; install with 'uv run playwright install chromium'"
+    elif sys.platform != "win32":
+        # On Linux/macOS, need explicit Playwright install
+        _skip_reason = "No Chromium/Chrome executable found; install with 'uv run playwright install chromium'"
+
+if _skip_reason:
+    pytestmark = pytest.mark.skip(reason=_skip_reason)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

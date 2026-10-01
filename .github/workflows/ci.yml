@@ -20,6 +20,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install
         run: uv sync --extra mcp --extra dev
+      - name: Install Playwright browsers
+        run: uv run playwright install --with-deps chromium
       - name: Lint
         run: uv run ruff check src tests
       - name: Test (offline — no browser needed)
