@@ -194,11 +194,20 @@ than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
 | `browse_snapshot()` | the compact DOM outline agents plan from |
 | `browse_extract(selector)` | pull text out of one element |
 | `browse_screenshot()` | base64 PNG of the live viewport |
-| `browse_eval(expression)` | run a small JS expression (read-only where possible) |
+| `browse_eval(expression, reason)` | run a JS expression - an escape hatch, not a sandbox. Refuses expressions that look irreversible, and reports `mutating` measured from a before/after DOM signature |
+| `browse_eval_audit()` | every `browse_eval` this session: expression, reason, effect |
+| `browse_download(selector)` | click something that downloads a file and save it locally; fails explicitly when no download starts |
+| `browse_set_files(paths, selector)` | attach files to an `<input type=file>`, and report what the page's own FileList ended up holding |
 | `browse_open_tab(url)` / `browse_list_tabs()` | multi-tab research |
 | `browse_switch_tab(index)` / `browse_close_tab(index)` | move between / close tabs |
 
-Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_select`, `browse_press`, `browse_navigate`, `browse_go_back`, `browse_wait_for`, `browse_open_tab`, `browse_switch_tab`, `browse_close_tab`) returns `{"ok": true, ...}` with a `verified` flag after the page has confirmed the result. Read tools (`browse_snapshot`, `browse_screenshot`, `browse_extract`, `browse_eval`, `browse_hover`, `browse_wait`, `browse_scroll`, `browse_go_back`, `browse_list_tabs`) return `ok: true` without a `verified` field.
+`browse_click` and `browse_navigate` also take optional expectations - `expect_url`, `expect_text`, `expect_count` (+ `expect_for`). They are polled for up to `expect_timeout_ms`, because the result of a click is often asynchronous, and an unmet expectation is a **hard error naming every mismatch** rather than a `verified: false` you can ignore. Omit them and behaviour is exactly as before, with no extra keys in the result.
+
+Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_select`, `browse_press`, `browse_navigate`, `browse_go_back`, `browse_wait_for`, `browse_open_tab`, `browse_switch_tab`, `browse_close_tab`, `browse_download`, `browse_set_files`) returns `{"ok": true, ...}` with a `verified` flag after the page has confirmed the result. Read tools (`browse_snapshot`, `browse_screenshot`, `browse_extract`, `browse_eval_audit`, `browse_hover`, `browse_wait`, `browse_scroll`, `browse_go_back`, `browse_list_tabs`) return `ok: true` without a `verified` field. `browse_eval` returns `mutating` rather than `verified`, because "did anything change" is the wrong question for arbitrary JS.
+
+**What `browse_eval` does not do.** It is not a sandbox. The guard matches destructive API names and guard words in the source text, so an expression that achieves the same effect another way will run. It raises the cost of a mistake; it does not make one impossible. Every call is recorded in the audit trail with the reason you stated, and the point of the audit is that you can read afterwards exactly what ran on a logged-in page.
+
+Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survive re-render: a ref is a remembered *identity*, not a position. If the original element is gone, Orvima looks for a substitute and **refuses rather than guessing** when two candidates are equally good.
 
 ---
 
@@ -218,13 +227,19 @@ Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_selec
 
 ## Roadmap
 
-- [x] Core agent: 19 `browse_*` tools, verify-after-every-step loop
+- [x] Core agent: 22 `browse_*` tools, verify-after-every-step loop
 - [x] Drives **your** installed Chrome/Edge (persistent profile) or attaches to a running browser over CDP
 - [x] Adaptive step-planner (snapshot → decide → act) with LLM / local-Ollama / MCP brains
+- [x] Classified recovery: transient failures get a second turn, irreversible ones never do
+- [x] Refs are element identities, not positions - they survive re-render and refuse on ambiguity
+- [x] Iframes and shadow roots are traversed, and unreachable frames are named rather than dropped
+- [x] Intent-level verification (`expect_url` / `expect_text` / `expect_count`)
+- [x] Bounded planner context - a 50-step run is ~3.8k tokens of prompt, not ~71k
+- [x] Downloads, file attachment, and an audited `browse_eval`
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
 - [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (demo-mode tests, no browser needed)
+- [x] CI + test suite (344 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Dashboard UI (watch the agent live, approve actions)
 - [ ] Media + downloads
