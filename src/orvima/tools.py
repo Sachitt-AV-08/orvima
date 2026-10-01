@@ -53,7 +53,7 @@ def _error(exc, candidates=None):
     return err
 
 
-def tool_navigate(browser, url: str) -> dict:
+def tool_browse_navigate(browser, url: str) -> dict:
     """Open a URL. Waits for the page to be interactive and returns URL + title."""
     try:
         return {"ok": True, **browser.navigate(url)}
@@ -61,7 +61,7 @@ def tool_navigate(browser, url: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_click(browser, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_click(browser, selector: str | None = None, ref: str | None = None) -> dict:
     """Click an element by CSS selector OR stable ref (e.g. 'e12' from snapshot).
 
     Prefer refs — they survive DOM churn. Returns ``verified: true`` if the
@@ -74,7 +74,7 @@ def tool_click(browser, selector: str | None = None, ref: str | None = None) -> 
         return _error(exc, _candidates(browser))
 
 
-def tool_hover(browser, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_hover(browser, selector: str | None = None, ref: str | None = None) -> dict:
     """Hover an element by selector or ref."""
     try:
         sel = _resolve(browser, ref, selector)
@@ -83,7 +83,7 @@ def tool_hover(browser, selector: str | None = None, ref: str | None = None) -> 
         return _error(exc, _candidates(browser))
 
 
-def tool_select(browser, value: str, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_select(browser, value: str, selector: str | None = None, ref: str | None = None) -> dict:
     """Pick an option in a <select> by value or label, using selector or ref."""
     try:
         sel = _resolve(browser, ref, selector)
@@ -92,7 +92,7 @@ def tool_select(browser, value: str, selector: str | None = None, ref: str | Non
         return _error(exc, _candidates(browser))
 
 
-def tool_wait_for(browser, selector: str | None = None, ref: str | None = None, timeout_ms: int = 10000) -> dict:
+def tool_browse_wait_for(browser, selector: str | None = None, ref: str | None = None, timeout_ms: int = 10000) -> dict:
     """Wait until an element matching selector or ref exists."""
     try:
         sel = _resolve(browser, ref, selector)
@@ -101,7 +101,7 @@ def tool_wait_for(browser, selector: str | None = None, ref: str | None = None, 
         return _error(exc, _candidates(browser))
 
 
-def tool_type(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_type(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
     """Type text into a field at a human-ish pace, by selector or ref.
 
     Returns the field's actual value after typing and ``verified``.
@@ -113,7 +113,7 @@ def tool_type(browser, text: str, selector: str | None = None, ref: str | None =
         return _error(exc, _candidates(browser))
 
 
-def tool_fill(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_fill(browser, text: str, selector: str | None = None, ref: str | None = None) -> dict:
     """Replace the value of a field wholesale, by selector or ref.
 
     Returns the field's actual value and ``verified``.
@@ -125,7 +125,7 @@ def tool_fill(browser, text: str, selector: str | None = None, ref: str | None =
         return _error(exc, _candidates(browser))
 
 
-def tool_press(browser, key: str) -> dict:
+def tool_browse_press(browser, key: str) -> dict:
     """Press a keyboard key, e.g. Enter, Escape, Tab, ArrowDown."""
     try:
         return {"ok": True, **browser.press(key)}
@@ -133,7 +133,7 @@ def tool_press(browser, key: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_go_back(browser, *_args, **_kw) -> dict:
+def tool_browse_go_back(browser, *_args, **_kw) -> dict:
     """Go back one page in history."""
     try:
         return {"ok": True, **browser.go_back()}
@@ -141,7 +141,7 @@ def tool_go_back(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_wait(browser, ms: int = 400) -> dict:
+def tool_browse_wait(browser, ms: int = 400) -> dict:
     """Pause briefly (e.g. after a submit or before a snapshot)."""
     try:
         return {"ok": True, **browser.wait(int(ms))}
@@ -149,7 +149,7 @@ def tool_wait(browser, ms: int = 400) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_scroll(browser, direction: str = "down") -> dict:
+def tool_browse_scroll(browser, direction: str = "down") -> dict:
     """Scroll the viewport: 'down' or 'up'."""
     try:
         return {"ok": True, **browser.scroll(direction)}
@@ -157,7 +157,7 @@ def tool_scroll(browser, direction: str = "down") -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_snapshot(browser, *_args, **_kw) -> dict:
+def tool_browse_snapshot(browser, *_args, **_kw) -> dict:
     """Describe the current page: URL, title, interactive elements and visible text.
 
     Compact and LLM-friendly — prefer this over dump_html. Use it after every
@@ -170,7 +170,7 @@ def tool_snapshot(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_screenshot(browser, *_args, **_kw) -> dict:
+def tool_browse_screenshot(browser, *_args, **_kw) -> dict:
     """Return the current page screenshot as base64 PNG (for the UI and humans)."""
     try:
         return {"ok": True, **browser.screenshot()}
@@ -178,7 +178,7 @@ def tool_screenshot(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_extract(browser, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_extract(browser, selector: str | None = None, ref: str | None = None) -> dict:
     """Extract text from the first element matching a selector or ref."""
     try:
         sel = _resolve(browser, ref, selector)
@@ -187,7 +187,7 @@ def tool_extract(browser, selector: str | None = None, ref: str | None = None) -
         return _error(exc, _candidates(browser))
 
 
-def tool_eval(browser, expression: str) -> dict:
+def tool_browse_eval(browser, expression: str) -> dict:
     """Run a small JS expression in the page (read-only where possible)."""
     try:
         return {"ok": True, **browser.eval(expression)}
@@ -196,7 +196,7 @@ def tool_eval(browser, expression: str) -> dict:
 
 
 # --------------------------------------------------------------- tabs ----
-def tool_open_tab(browser, url: str) -> dict:
+def tool_browse_open_tab(browser, url: str) -> dict:
     """Open a URL in a new tab and switch to it."""
     try:
         return {"ok": True, **browser.open_tab(url)}
@@ -204,7 +204,7 @@ def tool_open_tab(browser, url: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_list_tabs(browser, *_args, **_kw) -> dict:
+def tool_browse_list_tabs(browser, *_args, **_kw) -> dict:
     """List open tabs with index, url and which one is active."""
     try:
         return {"ok": True, **browser.list_tabs()}
@@ -212,7 +212,7 @@ def tool_list_tabs(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_switch_tab(browser, index: int) -> dict:
+def tool_browse_switch_tab(browser, index: int) -> dict:
     """Switch to another open tab by its list index."""
     try:
         return {"ok": True, **browser.switch_tab(index)}
@@ -220,7 +220,7 @@ def tool_switch_tab(browser, index: int) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_close_tab(browser, index: int) -> dict:
+def tool_browse_close_tab(browser, index: int) -> dict:
     """Close a tab by index (never the last remaining one)."""
     try:
         return {"ok": True, **browser.close_tab(index)}
@@ -229,25 +229,25 @@ def tool_close_tab(browser, index: int) -> dict:
 
 
 TOOLS = (
-    tool_navigate,
-    tool_click,
-    tool_hover,
-    tool_select,
-    tool_wait_for,
-    tool_type,
-    tool_fill,
-    tool_press,
-    tool_go_back,
-    tool_wait,
-    tool_scroll,
-    tool_snapshot,
-    tool_screenshot,
-    tool_extract,
-    tool_eval,
-    tool_open_tab,
-    tool_list_tabs,
-    tool_switch_tab,
-    tool_close_tab,
+    tool_browse_navigate,
+    tool_browse_click,
+    tool_browse_hover,
+    tool_browse_select,
+    tool_browse_wait_for,
+    tool_browse_type,
+    tool_browse_fill,
+    tool_browse_press,
+    tool_browse_go_back,
+    tool_browse_wait,
+    tool_browse_scroll,
+    tool_browse_snapshot,
+    tool_browse_screenshot,
+    tool_browse_extract,
+    tool_browse_eval,
+    tool_browse_open_tab,
+    tool_browse_list_tabs,
+    tool_browse_switch_tab,
+    tool_browse_close_tab,
 )
 
 TOOL_NAMES = {fn.__name__[5:] for fn in TOOLS}

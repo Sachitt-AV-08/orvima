@@ -196,6 +196,12 @@ def main(argv: list[str] | None = None) -> int:
         description="The browser your AI drives — and you can watch. Local-first, MCP-native, no cloud.",
     )
     parser.add_argument("--version", action="version", version=f"orvima {__version__}")
+    # Global browser flags (work with any subcommand)
+    parser.add_argument("--browser", default=None, choices=["chrome", "msedge", "chromium"],
+                        help="default: autodetect your installed Chrome/Edge")
+    parser.add_argument("--attach", default=None, metavar="CDP_URL",
+                        help="drive an already-running browser, e.g. http://127.0.0.1:9222")
+    parser.add_argument("--headless", action="store_true", help="no visible window (CI/pod-friendly)")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("demo", help="offline tour — try everything with zero setup")
@@ -214,13 +220,6 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--max-steps", type=int, default=20, help="cap on actions before giving up")
 
     sub.add_parser("doctor", help="health check: browser, profile, port, LLM, MCP")
-
-    for p in (p_serve, p_mcp, p_run):
-        p.add_argument("--browser", default=None, choices=["chrome", "msedge", "chromium"],
-                       help="default: autodetect your installed Chrome/Edge")
-        p.add_argument("--attach", default=None, metavar="CDP_URL",
-                       help="drive an already-running browser, e.g. http://127.0.0.1:9222")
-        p.add_argument("--headless", action="store_true", help="no visible window (CI/pod-friendly)")
 
     args = parser.parse_args(argv)
 

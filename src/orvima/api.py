@@ -43,7 +43,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Orvima", version=__version__, docs_url="/docs")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # local-first; UI may run on any port
+        allow_origins=["http://127.0.0.1", "http://localhost"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -170,7 +170,7 @@ def _sse(data: dict) -> dict:
 async def _yield_() -> None:  # pragma: no cover - union of await points
     import asyncio
 
-    await asyncio.sleep(0)
+    await asyncio.sleep(0.1)
 
 
 app = create_app()

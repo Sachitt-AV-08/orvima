@@ -14,6 +14,7 @@ import os
 import re
 
 from . import tools
+from .agent import _redact_sensitive
 
 MAX_SNAPSHOT_ITEMS = 40
 MAX_SNAPSHOT_BODY = 1200
@@ -37,28 +38,28 @@ class DemoPlanner(Planner):
         g = goal.lower()
         if any(k in g for k in ("contact", "message", "support", "email")):
             plan = [
-                {"tool": "navigate", "args": {"url": "https://acme.dev/contact"}},
-                {"tool": "fill", "args": {"selector": "input[name=name]", "text": "Orvima"}},
-                {"tool": "fill", "args": {"selector": "input[name=email]", "text": "hello@orvima.dev"}},
-                {"tool": "fill", "args": {"selector": "textarea[name=message]", "text": goal}},
-                {"tool": "click", "args": {"selector": "button:has-text('Send')"}},
-                {"tool": "wait", "args": {"ms": 400}},
-                {"tool": "snapshot", "args": {}},
-                {"tool": "list_tabs", "args": {}},
+                {"tool": "browse_navigate", "args": {"url": "https://acme.dev/contact"}},
+                {"tool": "browse_fill", "args": {"selector": "input[name=name]", "text": "Orvima"}},
+                {"tool": "browse_fill", "args": {"selector": "input[name=email]", "text": "hello@orvima.dev"}},
+                {"tool": "browse_fill", "args": {"selector": "textarea[name=message]", "text": goal}},
+                {"tool": "browse_click", "args": {"selector": "button:has-text('Send')"}},
+                {"tool": "browse_wait", "args": {"ms": 400}},
+                {"tool": "browse_snapshot", "args": {}},
+                {"tool": "browse_list_tabs", "args": {}},
             ]
         elif any(k in g for k in ("product", "bolt", "anchor", "shop", "cutter", "price")):
             plan = [
-                {"tool": "navigate", "args": {"url": "https://acme.dev/products"}},
-                {"tool": "snapshot", "args": {}},
-                {"tool": "extract", "args": {"selector": "body"}},
-                {"tool": "open_tab", "args": {"url": "https://acme.dev"}},
-                {"tool": "list_tabs", "args": {}},
-                {"tool": "switch_tab", "args": {"index": 0}},
+                {"tool": "browse_navigate", "args": {"url": "https://acme.dev/products"}},
+                {"tool": "browse_snapshot", "args": {}},
+                {"tool": "browse_extract", "args": {"selector": "body"}},
+                {"tool": "browse_open_tab", "args": {"url": "https://acme.dev"}},
+                {"tool": "browse_list_tabs", "args": {}},
+                {"tool": "browse_switch_tab", "args": {"index": 0}},
             ]
         else:
             plan = [
-                {"tool": "navigate", "args": {"url": "https://acme.dev"}},
-                {"tool": "snapshot", "args": {}},
+                {"tool": "browse_navigate", "args": {"url": "https://acme.dev"}},
+                {"tool": "browse_snapshot", "args": {}},
             ]
         idx = len([h for h in history if h.get("kind") == "tool"])
         if idx >= len(plan):
@@ -150,9 +151,11 @@ class LLMPlanner(Planner):
         for row in history:
             kind = row.get("kind")
             if kind == "tool":
-                lines.append(f"step {row.get('step')}: {row.get('tool')}({row.get('args')})")
+                args = _redact_sensitive(row.get("args") or {})
+                lines.append(f"step {row.get('step')}: {row.get('tool')}({args})")
                 result = row.get("result") or {}
                 compact = {k: v for k, v in result.items() if k not in ("png_b64",)}
+                compact = _redact_sensitive(compact)
                 lines.append(f"  -> ok={result.get('ok')} {compact}")
                 if row.get("tool") == "snapshot" and result.get("ok"):
                     last_snapshot = LLMPlanner._snapshot_text(result)

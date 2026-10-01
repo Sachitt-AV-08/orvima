@@ -62,7 +62,12 @@ _OUTLINE_JS = """(() => {
     const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") ||
                   el.getAttribute("title") || (el.tagName === "LABEL" ? text(el) : "");
     const own = text(el);
-    const val = (el.value !== undefined && el.value) ? ` value=${JSON.stringify(String(el.value).slice(0, 80))}` : "";
+    // Redact password values in snapshots
+    const isPassword = el.type === "password";
+    const rawVal = el.value !== undefined && el.value ? String(el.value).slice(0, 80) : "";
+    const val = (el.value !== undefined && el.value)
+        ? ` value=${JSON.stringify(isPassword ? "***" : rawVal)}`
+        : "";
     const info = [r, label || own, val].filter(Boolean).join(" | ");
     if (info) {
       out.push({
@@ -71,7 +76,7 @@ _OUTLINE_JS = """(() => {
         role: r,
         label: label || own,
         text: own,
-        value: el.value || "",
+        value: isPassword ? "***" : (el.value || ""),
       });
     }
     if (idx >= 60) break;
@@ -115,7 +120,11 @@ class BrowserController:
         attach: str | None = None,
     ):
         self._base_url = base_url
-        self._headless = bool(os.environ.get("ORVIMA_HEADLESS", headless))
+        env_headless = os.environ.get("ORVIMA_HEADLESS")
+        if env_headless:
+            self._headless = env_headless.lower() in ("1", "true", "yes")
+        else:
+            self._headless = headless
         self._profile_dir = profile_dir or os.environ.get("ORVIMA_PROFILE", DEFAULT_PROFILE)
         self._attach = attach or os.environ.get("ORVIMA_ATTACH", "") or None
         self._channel = None if self._attach else detect_channel()

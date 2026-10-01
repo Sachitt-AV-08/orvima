@@ -135,7 +135,7 @@ class Session:
         self.bus.emit({"type": "status", "status": self.status})
 
     def log(self, kind: str, **data: Any) -> None:
-        row = {"kind": kind, **data}
+        row = _redact_sensitive({"kind": kind, **data})
         self.transcript.append(row)
         self.bus.emit({"type": "log", "row": row})
 

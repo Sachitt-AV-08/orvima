@@ -15,32 +15,32 @@ def browser():
 
 
 TOOL_ARGS = {
-    "navigate": {"url": "https://acme.dev/contact"},
-    "click": {"selector": "btn"},
-    "hover": {"selector": "btn"},
-    "select": {"selector": "sort", "value": "price"},
-    "wait_for": {"selector": ".ready"},
-    "type": {"selector": "input", "text": "hi"},
-    "fill": {"selector": "input", "text": "hi"},
-    "press": {"key": "Enter"},
-    "go_back": {},
-    "wait": {"ms": 50},
-    "scroll": {"direction": "down"},
-    "snapshot": {},
-    "screenshot": {},
-    "extract": {"selector": "body"},
-    "eval": {"expression": "1 + 1"},
-    "open_tab": {"url": "https://acme.dev"},
-    "list_tabs": {},
-    "switch_tab": {"index": 0},
-    "close_tab": {"index": 0},
+    "browse_navigate": {"url": "https://acme.dev/contact"},
+    "browse_click": {"selector": "btn"},
+    "browse_hover": {"selector": "btn"},
+    "browse_select": {"selector": "sort", "value": "price"},
+    "browse_wait_for": {"selector": ".ready"},
+    "browse_type": {"selector": "input", "text": "hi"},
+    "browse_fill": {"selector": "input", "text": "hi"},
+    "browse_press": {"key": "Enter"},
+    "browse_go_back": {},
+    "browse_wait": {"ms": 50},
+    "browse_scroll": {"direction": "down"},
+    "browse_snapshot": {},
+    "browse_screenshot": {},
+    "browse_extract": {"selector": "body"},
+    "browse_eval": {"expression": "1 + 1"},
+    "browse_open_tab": {"url": "https://acme.dev"},
+    "browse_list_tabs": {},
+    "browse_switch_tab": {"index": 0},
+    "browse_close_tab": {"index": 0},
 }
 
 
 @pytest.mark.parametrize("name", sorted(TOOL_NAMES))
 def test_tool_contract(browser, name):
-    if name == "close_tab":  # needs a second tab to be allowed to close one
-        assert call_tool(browser, "open_tab", {"url": "https://acme.dev"})["ok"] is True
+    if name == "browse_close_tab":  # needs a second tab to be allowed to close one
+        assert call_tool(browser, "browse_open_tab", {"url": "https://acme.dev"})["ok"] is True
     result = call_tool(browser, name, TOOL_ARGS[name])
     assert result["ok"] is True, result
     assert "error" not in result
@@ -78,7 +78,9 @@ def test_run_contact_goal_reaches_done():
         kinds = [t["kind"] for t in sess.transcript]
         assert "summary" in kinds
         tools = [t["tool"] for t in sess.transcript if t["kind"] == "tool_call"]
-        assert "navigate" in tools and "click" in tools and "list_tabs" in tools or "open_tab" in tools
+        has_core = {"browse_navigate", "browse_click", "browse_list_tabs"} <= set(tools)
+        has_open = "browse_open_tab" in tools
+        assert has_core or has_open
     finally:
         sess.close()
 
@@ -108,7 +110,7 @@ def test_max_steps_limits_loop():
         toolset = staticmethod(lambda: ", ".join(sorted(TOOL_NAMES)))
 
         def decide(self, goal, history):
-            return {"tool": "snapshot", "args": {}}
+            return {"tool": "browse_snapshot", "args": {}}
 
     sess = SessionStore().create(mode="demo")
     try:
@@ -135,8 +137,8 @@ def test_demo_planner_terminates():
 
 
 def test_llm_parse_handles_fenced_json():
-    assert LLMPlanner._parse('```json\n{"tool": "click", "args": {"selector": "#x"}}\n```') == {
-        "tool": "click",
+    assert LLMPlanner._parse('```json\n{"tool": "browse_click", "args": {"selector": "#x"}}\n```') == {
+        "tool": "browse_click",
         "args": {"selector": "#x"},
     }
     assert LLMPlanner._parse('{"done": true, "summary": "ok"}') == {"done": True, "summary": "ok"}
@@ -155,7 +157,7 @@ def test_llm_planner_decide_uses_mock_endpoint(monkeypatch):
             return None
 
         def json(self):
-            return {"choices": [{"message": {"content": '{"tool": "snapshot", "args": {}}'}}]}
+            return {"choices": [{"message": {"content": '{"tool": "browse_snapshot", "args": {}}'}}]}
 
     captured = {}
 
@@ -167,8 +169,8 @@ def test_llm_planner_decide_uses_mock_endpoint(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", fake_post)
     planner = LLMPlanner(base="http://local.test/v1", key="k", model="m")
-    decision = planner.decide("look around", [{"kind": "tool", "tool": "navigate", "result": {"ok": True}}])
-    assert decision == {"tool": "snapshot", "args": {}}
+    decision = planner.decide("look around", [{"kind": "tool", "tool": "browse_navigate", "result": {"ok": True}}])
+    assert decision == {"tool": "browse_snapshot", "args": {}}
     assert captured["url"] == "http://local.test/v1/chat/completions"
     assert captured["model"] == "m"
 

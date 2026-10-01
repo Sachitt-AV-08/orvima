@@ -75,7 +75,7 @@ class DemoBrowser:
                 break
         # Also support ref resolution: [data-orvima-ref="eN"]
         if self._url == old_url and selector.startswith('[data-orvima-ref="e') and selector.endswith('"]'):
-            ref = selector[20:-2]  # extract eN
+            ref = selector[18:-2]  # extract eN (prefix is 18 chars)
             try:
                 idx = int(ref[1:]) - 1
                 page = _PAGES.get(self._url, _PAGES["https://acme.dev"])
@@ -148,9 +148,21 @@ class DemoBrowser:
         idx = int(index)
         if len(self._tabs) + 1 <= 1 or idx < 0 or idx >= len(self._tabs) + 1:
             raise BrowserError("refusing to close the last tab")
-        self._tabs.pop(idx)
+        # Handle closing the active tab (idx == len(self._tabs))
+        if idx == len(self._tabs):
+            # Active tab is self._url, not in _tabs
+            if self._tabs:
+                # Make the last background tab active
+                self._url = self._tabs.pop()
+            else:
+                # No background tabs, reset to default
+                self._url = "https://acme.dev"
+        else:
+            # Closing a background tab
+            self._tabs.pop(idx)
         self._active = min(self._active, len(self._tabs) - 1)
-        self._url = self._tabs[self._active] if self._tabs else "https://acme.dev"
+        if self._active < 0 and self._tabs:
+            self._active = 0
         self.log.append(f"close_tab {idx}")
         return {"closed": idx, "tabs": len(self._tabs) + 1, **self._state()}
 
