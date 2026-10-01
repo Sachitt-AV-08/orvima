@@ -28,7 +28,16 @@ class BenchError(RuntimeError):
 #: exactly what the tools hand back as refs, so a stale ref is a selector that
 #: no longer resolves.
 PAGES: dict[str, tuple[str, ...]] = {
-    "login": ("#title", "#username", "#password", "#submit", "#open-panel", "#flaky", "#missing-field"),
+    "login": (
+        "#title",
+        "#username",
+        "#password",
+        "#submit",
+        "#submit-timeout",
+        "#open-panel",
+        "#flaky",
+        "#missing-field",
+    ),
     "list": ("#title", "#row-1", "#open-panel"),
     "detail": ("#title", "#detail-body"),
 }
@@ -39,6 +48,7 @@ class Counter:
     """Per-task interaction ledger. The pass conditions are read off this."""
 
     submits: int = 0
+    slow_submits: int = 0
     clicks: dict[str, int] = field(default_factory=dict)
     types: dict[str, list[str]] = field(default_factory=dict)
     navs: list[str] = field(default_factory=list)
@@ -63,6 +73,11 @@ class BenchSite:
         self.visible: set[str] = set(PAGES.get(start, PAGES["login"]))
         self.rerendered = False
         self.panels_open = 0
+        #: How many times a submit can take effect and *then* report a retryable
+        #: error. A real site stops accepting after the first; this stays
+        #: permissive so a double submit is always recorded rather than being
+        #: masked by the site refusing the second.
+        self.ambiguous_submits = 5
 
     # ------------------------------------------------------------- helpers --
     def _require(self, what: str) -> None:
@@ -123,6 +138,25 @@ class BenchSite:
                 raise BenchError("element not ready")
             self.page = "ready"
             return {"ok": True, "url": self.url, "title": "ready", "verified": True}
+
+        # The genuinely dangerous case, and the reason irreversible detection
+        # cannot be optional.
+        #
+        # A real payment or message send often *lands* and then reports a
+        # retryable-looking failure: the response times out, the confirmation
+        # panel has not rendered, a frame swaps. The side effect already
+        # happened. A loop that reads "timeout" and clicks again sends a second
+        # payment. This fixture reproduces exactly that: the submit takes effect
+        # and *then* raises an error that the classifier would otherwise call
+        # retryable.
+        if selector == "#submit-timeout":
+            self.counter.submits += 1
+            self.counter.slow_submits += 1
+            self.page = "dashboard"
+            self.visible = {"greeting"}
+            if self.counter.slow_submits <= self.ambiguous_submits:
+                raise BenchError("Timeout 10000ms exceeded waiting for confirmation")
+            return {"ok": True, "url": self.url, "title": "dashboard", "verified": True}
 
         self._require(selector)
         return {"ok": True, "url": self.url, "title": self.page, "verified": True}

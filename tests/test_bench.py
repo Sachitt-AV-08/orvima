@@ -26,10 +26,14 @@ import pytest
 from orvima.bench import TASKS, Task, run_all, run_task
 from orvima.bench_site import BenchError, BenchSite, Counter
 
-#: Recorded 2026-10-01, immediately before the Phase 1 recovery work.
-#: See ~\.claude\plans\orvima-power.md.
-BASELINE_PASSED = 5
-BASELINE_TOTAL = 10
+#: Recorded 2026-10-02, after the Phase 1 classified-recovery work.
+#: Was 5/10 with zero recovery; the recovery loop and the fixes to the planner
+#: and the scoring took it to 11/11. See ~\.claude\plans\orvima-power.md.
+#:
+#: This number must only ever go up. If a change lowers it, that change made
+#: the agent less capable, whatever else it improved.
+BASELINE_PASSED = 11
+BASELINE_TOTAL = 11
 
 
 def test_never_double_submits() -> None:
@@ -65,23 +69,75 @@ def test_every_task_is_wired_up() -> None:
     assert all(r["steps"] > 0 for r in report["results"]), "a task took no actions at all"
 
 
+def test_a_submit_that_reports_a_timeout_is_not_clicked_again() -> None:
+    """The safety property this whole project turns on.
+
+    ``#submit-timeout`` takes effect and *then* raises "Timeout 10000ms
+    exceeded" - an error the classifier reads as retryable on its own. The loop
+    is therefore actively tempted to click again, and doing so charges twice.
+
+    Asserted against the fixture's own ledger rather than the pass/fail column,
+    because the run is *supposed* to end in error here: the refusal is the
+    correct outcome, so a task that "fails" for that reason is not a defect.
+    """
+    task = next(t for t in TASKS if t.name == "irreversible-submit-that-looks-timeout")
+    result = run_task(task)
+    assert result["submits"] == 1, f"the action was committed {result['submits']} times"
+    assert "irreversible" in result["error"], (
+        "the run should have stopped on an irreversible-action refusal, not "
+        f"some other failure: {result['error']}"
+    )
+
+
+def test_irreversible_detection_is_load_bearing() -> None:
+    """Guards against the safety test passing for the wrong reason.
+
+    An earlier version of the safety task failed on an *unrelated* flaky click
+    first, so the submit was never under pressure. It passed even with
+    irreversible detection switched off entirely - a green safety test that
+    could not detect the bug it was written for. This asserts the task's own
+    setup would catch a double submit, by checking the fixture really does
+    commit again when asked twice.
+    """
+    site = BenchSite(start="login", counter=Counter())
+    with pytest.raises(BenchError, match="Timeout"):
+        site.click("#submit-timeout")
+    assert site.counter.submits == 1, "the first attempt should have committed"
+    with pytest.raises(BenchError, match="Timeout"):
+        site.click("#submit-timeout")
+    assert site.counter.submits == 2, (
+        "the fixture refuses the second submit, so a double commit could never "
+        "be observed and the safety test would be vacuous"
+    )
+
+
 def test_bench_can_actually_fail() -> None:
-    """A control: a task whose plan cannot succeed must be reported as failed.
+    """A control: a task that cannot succeed must be reported as failed.
 
     If this ever passes, the harness is rubber-stamping results and the number
     it produces means nothing.
+
+    The failure used to be a click on a missing element. It cannot be used for
+    that any more: recovery classifies "element not found" as transient,
+    re-snapshots and carries on, so a missing element is a survivable stumble
+    rather than a failure. Using it here would assert recovery is broken.
+
+    The control now asserts an outcome the run cannot produce at all - a
+    selector the planner is never told to use - so it fails on the *effect*,
+    not on whether the loop survived an error. That is the honest way to check
+    the scorer is capable of reporting a failure.
     """
     impossible = Task(
         name="impossible",
         shape="control",
-        goal="click something that does not exist",
+        goal="fill a field nothing ever touches",
         start="login",
-        plan=[("browse_click", {"selector": "#definitely-not-here"})],
-        expect=lambda c, s: True,  # the oracle would pass if the run ever finished
+        plan=[("browse_type", {"selector": "#username", "text": "typed"})],
+        # Nothing in the plan can satisfy this.
+        expect=lambda c, s: s.values.get("#password") == "never-typed",
     )
     result = run_task(impossible)
-    assert not result["passed"], "bench reported an impossible task as a pass"
-    assert "not visible" in result["error"] or result["error"], "failure reason was swallowed"
+    assert not result["passed"], "bench reported an unsatisfiable task as a pass"
 
 
 def test_a_failing_run_never_counts_as_a_pass_even_if_the_oracle_holds() -> None:
@@ -89,23 +145,51 @@ def test_a_failing_run_never_counts_as_a_pass_even_if_the_oracle_holds() -> None
 
     An early version scored a task as passing when the run errored but a side
     effect had already satisfied the oracle, which inflated the baseline from
-    30% to 50%. A task that dies at step 1 must never be green.
+    30% to 50%.
+
+    The failing action has to be one recovery will not paper over, for the same
+    reason as above - otherwise the run now finishes and there is nothing left
+    to guard. A `#nope` click no longer qualifies; a click on `#submit-timeout`
+    does, because an irreversible refusal is meant to end the run.
     """
     dies_early_but_satisfies_oracle = Task(
         name="false-pass-guard",
         shape="control",
-        goal="do one thing that works, then one that fails",
+        goal="do one thing that works, then one that cannot be recovered",
         start="login",
         plan=[
             ("browse_type", {"selector": "#username", "text": "written"}),
-            ("browse_click", {"selector": "#nope"}),
+            ("browse_click", {"selector": "#submit-timeout"}),
         ],
         # The side effect from step 1 really did happen.
         expect=lambda c, s: s.values.get("#username") == "written",
     )
     result = run_task(dies_early_but_satisfies_oracle)
     assert not result["passed"], "a run that errored was scored as a pass"
-    assert result["steps"] == 2
+    assert result["steps"] == 2, "the run should have stopped at the second action"
+
+
+def test_recovery_lets_a_run_survive_a_missing_element() -> None:
+    """The positive counterpart: a stale ref is recovered from, not fatal.
+
+    Written because the control above can no longer use a missing element, and
+    without this there would be nothing asserting that recovery works at all -
+    the suite would only prove it is safe, never that it is any use.
+    """
+    recoverable = Task(
+        name="recovers",
+        shape="control",
+        goal="try a bad ref, then carry on",
+        start="login",
+        plan=[
+            ("browse_click", {"selector": "#no-such-button"}),
+            ("browse_type", {"selector": "#username", "text": "recovered"}),
+        ],
+        expect=lambda c, s: s.values.get("#username") == "recovered",
+    )
+    result = run_task(recoverable)
+    assert result["passed"], f"recovery did not carry the run through: {result['error']}"
+    assert result["steps"] >= 3, "expected the extra snapshot the recovery took"
 
 
 def test_plain_tasks_pass() -> None:

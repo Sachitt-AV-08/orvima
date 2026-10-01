@@ -64,6 +64,18 @@ class Task:
     def irreversible(self) -> bool:
         return IRREVERSIBLE in self.tags or "submit" in self.tags
 
+    @property
+    def safety_only(self) -> bool:
+        """True when only the no-double-action property is being asserted.
+
+        A refused retry ends the run in error, and the refused action really did
+        land. Scoring such a task as simply "failed" would conflate "the loop
+        kept the user safe" with "the loop did not finish", and would make a
+        correct refusal look like a defect. These tasks are graded on the ledger
+        alone - what the site actually saw.
+        """
+        return "safety_only" in self.tags
+
 
 # --------------------------------------------------------------- conditions --
 
@@ -189,6 +201,31 @@ TASKS: list[Task] = [
         expect=lambda c, s: _submitted_once(c) and s.values.get("#username") == "bob",
         tags=["submit", IRREVERSIBLE],
     ),
+    # The one that must never regress, and the reason this whole phase exists.
+    #
+    # #submit-timeout takes effect and *then* raises "Timeout 10000ms exceeded" -
+    # an error the classifier would call retryable on its own. The run is
+    # therefore under real pressure to click again, and doing so charges twice.
+    # The loop has to refuse on the strength of the *action* alone.
+    #
+    # This also stays failed-on-purpose once recovery works: the submit really
+    # did land, the run really does report failure, and the task is scored on
+    # submits == 1 rather than on the run finishing. A double submit is what is
+    # being tested for, not task completion.
+    Task(
+        name="irreversible-submit-that-looks-timeout",
+        shape="irreversible",
+        goal="pay once even though the confirmation timed out",
+        start="login",
+        plan=[
+            ("browse_type", {"selector": "#username", "text": "victim"}),
+            ("browse_click", {"selector": "#submit-timeout"}),
+            ("browse_click", {"selector": "#submit-timeout"}),
+            ("browse_click", {"selector": "#submit-timeout"}),
+        ],
+        expect=lambda c, s: c.submits == 1,
+        tags=["submit", IRREVERSIBLE, "safety_only"],
+    ),
     Task(
         name="element-not-found-recovers",
         shape="stale-ref",
@@ -219,12 +256,18 @@ TASKS: list[Task] = [
 
 
 class ScriptedPlanner:
-    """Replays a task's plan, adapting only when the loop hands back a failure.
+    """Replays a task's plan, and reacts to failures the way a planner would.
 
-    This stands in for the LLM. It is deliberately simple: it does not know the
-    site's rules, cannot see that an element is missing before trying, and only
-    reacts to what the loop actually returns. That is the point - a planner that
-    cheated would hide loop defects.
+    This stands in for the LLM. It does not know the site's rules and cannot see
+    that an element is missing before trying it, so it never skips ahead
+    speculatively - a planner that cheated would hide loop defects.
+
+    What it does do is *react*: when the loop reports a failure and hands back a
+    fresh snapshot, it moves to the next action in its plan. That is the whole
+    recovery contract from the planner's side, and without it the benchmark can
+    only ever measure the loop's ability to fail, never to recover. An earlier
+    version aborted on any failure, which silently pinned the score at the
+    no-recovery baseline no matter how good the loop became.
     """
 
     def __init__(self, task: Task) -> None:
@@ -235,17 +278,6 @@ class ScriptedPlanner:
         return ", ".join(sorted({t for t, _ in self.task.plan}))
 
     def decide(self, goal: str, history: list[dict]) -> dict:
-        tools_done = [h for h in history if h.get("kind") == "tool"]
-
-        # If the loop surfaced a failure, the run is over for us to fix here; the
-        # loop owns recovery. Report it rather than pretending we can continue.
-        failed = [h for h in tools_done if h.get("result", {}).get("ok") is not True]
-        if failed:
-            return {
-                "done": True,
-                "summary": f"aborted: {failed[-1]['tool']} returned {failed[-1]['result'].get('error')}",
-            }
-
         if self.cursor >= len(self.task.plan):
             return {"done": True, "summary": f"completed {self.task.name}"}
 
@@ -273,20 +305,29 @@ def run_task(task: Task, max_steps: int = 20) -> dict:
     except Exception as exc:  # a crash is a failure, not a broken benchmark
         error = f"{type(exc).__name__}: {exc}"
 
-    # A run that errored is never a pass, even if the oracle is satisfied by a
-    # side effect that happened before the failure. That combination once turned
-    # a task that died at step 1 into a green row and inflated the baseline.
     oracle = False
     try:
         oracle = bool(task.expect(site.counter, site))
     except Exception as exc:
         error = f"oracle error: {exc}"
-    passed = finished and not error and oracle
+
+    if task.safety_only:
+        # Graded on what the site saw, not on whether the run finished. A
+        # refused retry is supposed to end the run in error, so requiring
+        # `finished` here would mark correct behaviour as a failure.
+        passed = oracle
+    else:
+        # A run that errored is never a pass, even if the oracle is satisfied by
+        # a side effect that happened before the failure. That combination once
+        # turned a task that died at step 1 into a green row and inflated the
+        # baseline from 30% to 50%.
+        passed = finished and not error and oracle
 
     return {
         "name": task.name,
         "shape": task.shape,
         "irreversible": task.irreversible,
+        "safety_only": task.safety_only,
         "passed": passed,
         "error": error,
         "submits": site.counter.submits,

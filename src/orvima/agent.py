@@ -20,10 +20,11 @@ import re
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from . import tools
+from .recovery import classify
 
 
 class EventBus:
@@ -161,11 +162,29 @@ class Session:
 class AgentLoop:
     """Runs a goal: snapshot -> decide -> act -> verify, until done."""
 
-    def __init__(self, session: Session, planner=None, max_steps: int = 20):
+    def __init__(
+        self,
+        session: Session,
+        planner=None,
+        max_steps: int = 20,
+        max_attempts: int | None = None,
+    ):
+        """Run a goal under a step budget and a separate attempt budget.
+
+        ``max_steps`` bounds *progress*: how many decisions the planner may make.
+        ``max_attempts`` bounds *work*: how many tool calls may actually run,
+        retries included. They are separate on purpose - without the split, a
+        retry loop spends the step budget and the run ends looking like it made
+        progress when it only re-tried the same thing.
+        """
         from .planner import planner_for
 
         self.session = session
         self.max_steps = max_steps
+        # Enough headroom to recover from a few failures without letting a stuck
+        # loop run forever.
+        self.max_attempts = max_attempts if max_attempts is not None else max_steps * 3
+        self.attempts = 0
         self.history: list[dict] = []
         self.planner = planner or planner_for(session.mode)
 
@@ -185,28 +204,95 @@ class AgentLoop:
                     sess.status = "done"
                     sess.bus.emit({"type": "status", "status": "done"})
                     sess.maybe_frame(force=True)
-                    return {"ok": True, "steps": step, "goal": goal, "summary": summary}
+                    return {
+                        "ok": True,
+                        "steps": step,
+                        "attempts": self.attempts,
+                        "goal": goal,
+                        "summary": summary,
+                    }
 
                 name = decision["tool"]
                 args = decision.get("args", {})
-                sess.log("tool_call", step=step, tool=name, args=args)
-                try:
-                    result = self._run_tool(name, args)
-                except Exception as exc:  # keep the UI informed on bad args
-                    result = {"ok": False, "error": str(exc)}
-                sess.log("tool_result", step=step, result=result)
-                self.history.append({"kind": "tool", "step": step, "tool": name, "args": args, "result": result})
-                sess.maybe_frame()
+                result = self._attempt(step, name, args)
+
                 if result.get("ok") is not True:
-                    raise RuntimeError(
-                        f"step {step} ({name}) failed: {result.get('error', 'unknown')}"
+                    verdict = classify(
+                        result.get("error", "unknown"), tool=name, args=args
                     )
+                    sess.log("recovery", step=step, tool=name, **asdict(verdict))
+
+                    if not verdict.retryable:
+                        # Irreversible, fatal, or simply not understood. Ending
+                        # here is the safe choice: a duplicated action is worse
+                        # than a failed run.
+                        raise RuntimeError(
+                            f"step {step} ({name}) failed and will not be retried "
+                            f"[{verdict.cls.value}: {verdict.reason}]: "
+                            f"{result.get('error', 'unknown')}"
+                        )
+
+                    # Transient. Hand the fresh page state back to the planner
+                    # and let it choose again - re-snapshotting here is what
+                    # turns a dead ref into a usable one.
+                    self._refresh_after_failure(name, args)
+                    continue
+
             raise RuntimeError(f"did not finish in {self.max_steps} steps")
         except Exception as exc:
             sess.status = "error"
             sess.bus.emit({"type": "status", "status": "error"})
             sess.log("error", error=str(exc))
             return {"ok": False, "error": str(exc)}
+
+    def _attempt(self, step: int, name: str, args: dict) -> dict:
+        """Run one tool once, honouring the attempt budget.
+
+        The attempt budget is checked here rather than in ``run`` because a retry
+        loop must not be able to spend the whole step budget re-trying.
+        """
+        sess = self.session
+        if self.attempts >= self.max_attempts:
+            raise RuntimeError(
+                f"attempt budget exhausted ({self.max_attempts} tool calls) - "
+                "the run is not making progress"
+            )
+        self.attempts += 1
+        sess.log("tool_call", step=step, attempt=self.attempts, tool=name, args=args)
+        try:
+            result = self._run_tool(name, args)
+        except Exception as exc:  # keep the UI informed on bad args
+            result = {"ok": False, "error": str(exc)}
+        sess.log("tool_result", step=step, result=result)
+        self.history.append(
+            {
+                "kind": "tool",
+                "step": step,
+                "attempt": self.attempts,
+                "tool": name,
+                "args": args,
+                "result": result,
+            }
+        )
+        sess.maybe_frame()
+        return result
+
+    def _refresh_after_failure(self, name: str, args: dict) -> None:
+        """Put current page state back in front of the planner after a failure.
+
+        Skipped when the action that failed was itself a read, so a failed
+        ``browse_snapshot`` does not trigger another one.
+        """
+        if name in ("browse_snapshot", "browse_list_tabs", "browse_extract"):
+            return
+        try:
+            self._attempt(self.history[-1]["step"] if self.history else 0, "browse_snapshot", {})
+        except RuntimeError:
+            raise
+        except Exception:
+            # A snapshot that also fails is not itself a reason to give up; the
+            # planner still gets the error from the action that did fail.
+            pass
 
     def _run_tool(self, name: str, args: dict) -> dict:
         return tools.call_tool(self.session.browser, name, args)
