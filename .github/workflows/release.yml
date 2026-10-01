@@ -42,6 +42,8 @@ jobs:
   build-and-release:
     needs: test-and-lint
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,15 +60,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Extract version from tag
+        id: version
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Verify version matches tag
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
           PY_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          if [ "$TAG_VERSION" != "$PY_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) != pyproject.toml version ($PY_VERSION)"
+          if [ "${{ steps.version.outputs.VERSION }}" != "$PY_VERSION" ]; then
+            echo "ERROR: Tag version (${{ steps.version.outputs.VERSION }}) != pyproject.toml version ($PY_VERSION)"
             exit 1
           fi
-          echo "Version check passed: $TAG_VERSION"
+          echo "Version check passed: ${{ steps.version.outputs.VERSION }}"
 
       - name: Build
         run: |
@@ -106,10 +112,10 @@ jobs:
             **From GitHub Release (recommended):**
             ```bash
             # Universal wheel (works on all Python 3.10+)
-            pip install https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl
+            pip install https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ steps.version.outputs.VERSION }}-py3-none-any.whl
 
             # With MCP extra
-            pip install 'orvima[mcp] @ https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl'
+            pip install 'orvima[mcp] @ https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ steps.version.outputs.VERSION }}-py3-none-any.whl'
             ```
 
             **From Git (always latest):**
@@ -159,7 +165,7 @@ jobs:
 
       - name: Download release wheel
         run: |
-          WHEEL_URL="https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl"
+          WHEEL_URL="https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
           curl -L -o orvima.whl "$WHEEL_URL"
           ls -la orvima.whl
 
