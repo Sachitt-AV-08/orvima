@@ -219,6 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--mode", default=None, choices=["demo", "real"])
     p_run.add_argument("--max-steps", type=int, default=20, help="cap on actions before giving up")
 
+    p_bench = sub.add_parser("bench", help="measure agent-loop task pass rate (no browser needed)")
+    p_bench.add_argument("--json", action="store_true", help="machine-readable summary")
+    p_bench.add_argument("--shape", help="only run tasks of this shape")
+    p_bench.add_argument("--out", help="write the full report to this JSON file")
+
     sub.add_parser("doctor", help="health check: browser, profile, port, LLM, MCP")
 
     args = parser.parse_args(argv)
@@ -249,6 +254,17 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_mcp(mode)
         if args.command == "run":
             return cmd_run(args.goal, mode, args.max_steps)
+        if args.command == "bench":
+            from .bench import main as bench_main
+
+            bench_argv: list[str] = []
+            if args.json:
+                bench_argv.append("--json")
+            if args.shape:
+                bench_argv += ["--shape", args.shape]
+            if args.out:
+                bench_argv += ["--out", args.out]
+            return bench_main(bench_argv)
         if args.command == "doctor":
             return cmd_doctor()
         return 2
