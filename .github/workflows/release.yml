@@ -6,72 +6,84 @@ on:
       - 'v*'
 
 permissions:
-  contents: write  # to create releases and upload assets
+  contents: write
 
 jobs:
-  build-and-release:
+  test-and-lint:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
 
-      - name: Build wheel
-        run: |
-          uv build --wheel
-          ls -la dist/
+      - name: Install Playwright browsers
+        run: uv run playwright install --with-deps chromium
 
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel-py${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 30
+      - name: Install deps
+        run: uv sync --extra mcp --extra dev
 
-  create-release:
-    needs: build-and-release
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Test
+        run: uv run pytest
+
+  build-and-release:
+    needs: test-and-lint
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          pattern: wheel-py*
-          merge-multiple: true
-          path: dist/
+          python-version: "3.12"
 
-      - name: Verify wheels
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify version matches tag
         run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PY_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$TAG_VERSION" != "$PY_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) != pyproject.toml version ($PY_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $TAG_VERSION"
+
+      - name: Build
+        run: |
+          uv build
           ls -la dist/
+
+      - name: Verify wheel contents
+        run: |
           for w in dist/*.whl; do
             echo "=== $w ==="
-            unzip -l "$w" | head -20
+            unzip -l "$w" | head -30
           done
 
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.whl > SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create Release
@@ -84,6 +96,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.whl
+            dist/*.tar.gz
             dist/SHA256SUMS.txt
           body: |
             ## Orvima ${{ github.ref_name }}
@@ -92,8 +105,11 @@ jobs:
 
             **From GitHub Release (recommended):**
             ```bash
-            # Pick the wheel for your Python version
-            pip install https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-<version>-py3-none-any.whl
+            # Universal wheel (works on all Python 3.10+)
+            pip install https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl
+
+            # With MCP extra
+            pip install 'orvima[mcp] @ https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl'
             ```
 
             **From Git (always latest):**
@@ -102,9 +118,18 @@ jobs:
             uv pip install 'orvima[mcp]@git+https://github.com/Sachitt-AV-08/orvima.git@${{ github.ref_name }}'
             ```
 
+            **Windows (PowerShell):**
+            ```powershell
+            irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex
+            ```
+
+            **macOS / Linux:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh
+            ```
+
             ### Verification
             ```bash
-            # Verify checksum
             sha256sum -c SHA256SUMS.txt
             ```
 
@@ -113,8 +138,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  update-installers:
-    needs: create-release
+  smoke-install:
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -122,34 +147,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download SHA256SUMS
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          pattern: wheel-py*
-          merge-multiple: true
-          path: dist/
+          python-version: "3.12"
 
-      - name: Generate checksums
-        run: |
-          cd dist
-          sha256sum *.whl > SHA256SUMS.txt
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
 
-      - name: Update install.ps1
+      - name: Download release wheel
         run: |
-          # Get latest version from tag
-          VERSION="${{ github.ref_name }}"
-          # Update the install script with the new release URL
-          # The script already fetches latest release via GitHub API
-          echo "Installer scripts fetch latest release dynamically - no update needed"
+          WHEEL_URL="https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ github.ref_name#v }}-py3-none-any.whl"
+          curl -L -o orvima.whl "$WHEEL_URL"
+          ls -la orvima.whl
 
-      - name: Verify install.sh
+      - name: Test wheel install
         run: |
-          # Quick syntax check
-          bash -n install.sh
-          echo "install.sh OK"
-
-      - name: Verify install.ps1
-        run: |
-          # Quick syntax check
-          pwsh -c ". .\install.ps1; Write-Host 'OK'" 2>&1 | head -5 || true
-          echo "install.ps1 OK"
+          pip install "orvima[mcp] @ ./orvima.whl"
+          orvima --version
+          orvima doctor --help

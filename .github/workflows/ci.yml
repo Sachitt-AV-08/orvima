@@ -30,3 +30,18 @@ jobs:
         run: |
           uv run orvima --version
           uv run orvima run "check the products page" --mode demo
+
+  build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: uv build
+      - name: Smoke test wheel
+        run: |
+          pip install dist/*.whl[mcp]
+          orvima --version
+          orvima doctor --help
