@@ -18,12 +18,14 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from .errors import BrowserError
+from .identity import ElementIdentity, RefRegistry
 
 DEFAULT_PROFILE = str(Path.home() / ".orvima" / "profile")
 
@@ -131,9 +133,14 @@ _OUTLINE_JS = """(() => {
     return el.getAttribute("role") || "";
   };
   const isVisible = (el) => {
+    // The hidden attribute is display:none by UA stylesheet, but a page that
+    // sets `display: flex` on the element beats it - so check it directly.
+    if (el.hasAttribute("hidden")) return false;
     const style = window.getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") return false;
+    if (style.opacity === "0") return false;
     if (el.getAttribute("aria-hidden") === "true") return false;
+    if (el.closest("[hidden]")) return false;
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
@@ -185,6 +192,29 @@ _OUTLINE_JS = """(() => {
 """
 
 
+#: Resolves a ref to the element it currently points at, or null if the
+#: attribute is gone. Used to notice a hijacked ref before clicking it.
+#: Takes the ref as an argument rather than reading a global, so a page cannot
+#: spoof the value and convince the guard it is looking at something else.
+_IDENTITY_JS = """(ref) => {
+  const el = document.querySelector('[data-orvima-ref="' + ref + '"]');
+  if (!el) return null;
+  const text = (e) => (e.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 400);
+  const role = (e) => {
+    if (e.tagName === "A" || e.tagName === "BUTTON") return e.tagName.toLowerCase();
+    return e.getAttribute("role") || "";
+  };
+  const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") ||
+                el.getAttribute("title") || (el.tagName === "LABEL" ? text(el) : "");
+  return {
+    tag: el.tagName.toLowerCase(),
+    role: role(el),
+    label: label || text(el),
+    text: text(el),
+  };
+}"""
+
+
 def detect_channel() -> str | None:
     """Return 'chrome', 'msedge', or None (use bundled chromium)."""
     env = (os.environ.get("ORVIMA_BROWSER") or "").strip().lower()
@@ -222,6 +252,9 @@ class BrowserController:
         self.page = None
         self._pw = None
         self._closed = False
+        # What each ref described at the last snapshot. Populated by snapshot()
+        # and consulted before every ref-based action.
+        self._registry = RefRegistry()
 
     def start(self) -> None:
         from playwright.sync_api import sync_playwright
@@ -316,6 +349,127 @@ class BrowserController:
             raise BrowserError(f"navigation failed: {exc}") from exc
         return self._state()
 
+    # ------------------------------------------------------- element identity --
+
+    def _guard_ref(self, selector: str) -> str:
+        """Check that a ref still means what the last snapshot said it meant.
+
+        A ref is the attribute ``[data-orvima-ref="eN"]``, assigned by numbering
+        whatever was visible at snapshot time. If the page re-renders, the
+        numbering is reassigned and the ref silently points at a *different*
+        element - a click that looks successful and does the wrong thing. That
+        is worse than an error, so this refuses rather than redirects.
+
+        Returns the selector to use: either the original, or a replacement
+        selector when the ref went stale but the element it described is still
+        on the page. Raises when the ref is stale with no unambiguous
+        substitute, or when it now points at something else entirely.
+        """
+        m = re.match(r'^\[data-orvima-ref="(e\d+)"\]$', selector or "")
+        if not m:
+            return selector  # a plain selector is the caller's business
+        ref = m.group(1)
+        if not self._registry.identity_for(ref):
+            return selector  # never described; nothing to compare against
+
+        current = self._current_identity(ref)
+        verdict = self._registry.resolve(ref, current)
+
+        if verdict.safe:
+            return selector
+        if verdict.replacement is None:
+            raise BrowserError(
+                f"ref {ref} is stale: {verdict.reason}. Take a fresh snapshot to "
+                "get current refs rather than reusing an old one"
+            )
+
+        replacement = self._selector_for(verdict.replacement)
+        # The registry only knows what the *last snapshot* saw. A candidate found
+        # there may be gone too, and handing back a selector for a dead node
+        # just trades a clear error for a 10s Playwright timeout. Confirm it is
+        # really on the page before committing to it.
+        try:
+            matches = self.page.locator(replacement).count()
+        except Exception:
+            matches = 0
+        if matches == 0:
+            raise BrowserError(
+                f"ref {ref} is stale: {verdict.reason}, and nothing matching it is on the "
+                "page now either. Take a fresh snapshot to get current refs"
+            )
+        return replacement
+
+    def _current_identity(self, ref: str):
+        """What the ref points at right now, or None if nothing matches.
+
+        Tri-state on purpose. ``None`` means "the selector matched nothing",
+        which is the stale case. It must be distinguished from "the attribute
+        is present, so the ref is fine" - conflating those two sent every
+        still-valid ref down the re-resolution path and rebuilt a text-based
+        selector that then timed out on a perfectly good ref.
+        """
+        # Presence first: if the attribute is still there, the ref resolves and
+        # the only question is whether it resolves to the *right* element.
+        try:
+            count = self.page.locator(f'[data-orvima-ref="{ref}"]').count()
+        except Exception:
+            count = 0
+        if count == 0:
+            return None
+
+        try:
+            raw = self.page.evaluate(_IDENTITY_JS, ref)
+        except Exception:
+            raw = None
+        if not raw:
+            # The attribute is present but the probe failed. Rather than guess
+            # that it is safe, report it as unidentifiable: the caller treats an
+            # unknown identity as a mismatch and refuses, which is the safe side.
+            return ElementIdentity(ref=ref)
+        return ElementIdentity(
+            ref=ref,
+            role=raw.get("role") or "",
+            label=raw.get("label") or "",
+            text=raw.get("text") or "",
+            tag=raw.get("tag") or "",
+        )
+
+    def _selector_for(self, identity: ElementIdentity) -> str:
+        """A selector that targets a re-resolved element.
+
+        Built from the *recorded* identity rather than the live one, so it keeps
+        working for the click that is about to happen even if the page shifts
+        again immediately afterwards.
+
+        Every candidate is comma-separated so Playwright tries them in turn. An
+        earlier version emitted a single ``button:has-text("Publish")`` and that
+        is far too loose - it matches any button containing the word, so a page
+        with "Publish draft" and "Publish" would click whichever came first.
+        Text matching is now an exact full-string match.
+        """
+        parts: list[str] = []
+        label = identity.selector_label
+        text = identity.selector_text
+        if label:
+            escaped = label.replace('"', '\\"')
+            if identity.tag:
+                parts.append(f'{identity.tag}[aria-label="{escaped}"]')
+            parts.append(f'[aria-label="{escaped}"]')
+        if text:
+            # :text-is pins the match to the element's own full text, so a
+            # button reading "Publish draft" cannot satisfy a ref recorded as
+            # "Publish". It is case-sensitive, hence selector_text rather than
+            # the normalised label.
+            parts.append(f'{identity.tag or "*"}:text-is("{text}")')
+        if not parts and identity.tag:
+            parts.append(identity.tag)
+        if not parts:
+            raise BrowserError(
+                f"cannot build a selector for {identity.ref!r}: it had no label, "
+                "text, or tag to identify it by. Take a fresh snapshot"
+            )
+        return ", ".join(parts)
+
     def _state(self) -> dict:
         return {"url": self.page.url, "title": self.page.title()}
 
@@ -372,6 +526,7 @@ class BrowserController:
 
     def click(self, selector: str) -> dict:
         self._require_open()
+        selector = self._guard_ref(selector)
         before_sig = self._dom_signature()
         try:
             self.page.click(selector, timeout=10000)
@@ -382,6 +537,7 @@ class BrowserController:
         return {**self._state(), "verified": verified}
 
     def hover(self, selector: str) -> dict:
+        selector = self._guard_ref(selector)
         try:
             self.page.hover(selector, timeout=10000)
         except Exception as exc:
@@ -390,6 +546,7 @@ class BrowserController:
 
     def type(self, selector: str, text: str, delay_ms: int | None = None) -> dict:
         self._require_open()
+        selector = self._guard_ref(selector)
         delay = _type_delay_ms() if delay_ms is None else max(0, int(delay_ms))
         try:
             self.page.click(selector, timeout=10000)
@@ -404,6 +561,7 @@ class BrowserController:
 
     def fill(self, selector: str, text: str) -> dict:
         self._require_open()
+        selector = self._guard_ref(selector)
         try:
             self.page.fill(selector, text, timeout=10000)
         except Exception as exc:
@@ -415,6 +573,7 @@ class BrowserController:
         return {"value": value, "verified": verified, **self._state()}
 
     def select(self, selector: str, value: str) -> dict:
+        selector = self._guard_ref(selector)
         try:
             values = self.page.select_option(selector, value, timeout=10000)
         except Exception as exc:
@@ -507,6 +666,9 @@ class BrowserController:
             data = self.page.evaluate(_OUTLINE_JS)
         except Exception as exc:
             raise BrowserError(f"snapshot failed: {exc}") from exc
+        # Record what each ref described, so a later click can tell whether the
+        # ref still means the same element.
+        self._registry.record_snapshot(data.get("items"))
         return data
 
     def screenshot(self) -> dict:
@@ -517,6 +679,7 @@ class BrowserController:
         return {"png_b64": base64.b64encode(png).decode("ascii")}
 
     def extract(self, selector: str) -> dict:
+        selector = self._guard_ref(selector)
         try:
             el = self.page.locator(selector).first
             text = el.inner_text() if el.count() else ""

@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  A page that re-renders itself between snapshot and click.
+
+  The two shapes that break naive ref handling:
+
+  1. RERENDER_REPLACE - the node is destroyed and an identical one is created.
+     The data-orvima-ref attribute is gone, so the selector matches nothing.
+     A capable agent re-resolves by role + label and still hits "Publish".
+
+  2. RERENDER_HIJACK - a new element is *inserted before* the old one, so the
+     numbering shifts and e7 now names a different button entirely. Nothing
+     looks broken - the selector still resolves - but the click would land on
+     the wrong control. This is the dangerous case, and an agent that trusts
+     the number gets it wrong silently.
+
+  #status reports which mode is armed, so a test can assert on it.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>rerender</title>
+  <style>
+    body { font-family: Consolas, monospace; padding: 20px; }
+    button { display: block; margin: 6px 0; padding: 6px 12px; }
+    #status { color: #666; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div id="status">idle</div>
+  <div id="panel">
+    <button id="save">Save draft</button>
+    <button id="publish">Publish</button>
+    <button id="delete">Delete everything</button>
+    <!-- A decoy used only by mode=hijack. Hidden until the fixture unhides it,
+         at which point it steals the ref belonging to "Publish".
+
+         Its text is deliberately NOT any other button's text. An earlier
+         version read "Delete everything", which made the page genuinely
+         ambiguous: the identity layer correctly found a live element matching
+         the dead ref's description and re-resolved to it. The code was right
+         and the fixture was wrong - a page really can have two identical
+         buttons, and in that case refusing is the only safe answer, which is
+         what the "no unambiguous substitute" test covers. -->
+    <button id="publish-clone-decoy" hidden>Discard</button>
+  </div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const mode = params.get("mode") || "replace";
+  const afterMs = Number(params.get("after") || 400);
+  const status = document.getElementById("status");
+
+  function log(msg) { status.textContent = msg; }
+
+  window.__rerenderFired = false;
+  window.__rerenderLog = [];
+
+  // Fires once, shortly after load - i.e. after a snapshot has been taken.
+  setTimeout(() => {
+    if (window.__rerenderFired) return;
+    window.__rerenderFired = true;
+
+    const publish = document.getElementById("publish");
+
+    if (mode === "replace") {
+      // Same element, new node. The ref attribute does not survive.
+      const fresh = document.createElement("button");
+      fresh.id = "publish";
+      fresh.textContent = "Publish";
+      publish.replaceWith(fresh);
+      window.__rerenderLog.push("replace:publish");
+    } else if (mode === "hijack") {
+      // A *different* button slides into the ref's slot and takes the
+      // data-orvima-ref attribute with it. The selector still resolves, so
+      // nothing looks broken - but it now names a destructive control that was
+      // never "Publish". This is the case that must never be clicked.
+      const decoy = document.getElementById("publish-clone-decoy");
+      decoy.hidden = false;
+      const stolen = publish.getAttribute("data-orvima-ref");
+      panel.insertBefore(decoy, publish);
+      if (stolen) {
+        publish.removeAttribute("data-orvima-ref");
+        decoy.setAttribute("data-orvima-ref", stolen);
+      }
+      window.__rerenderLog.push("hijack:decoy");
+    }
+
+    log("rerendered:" + mode);
+  }, afterMs);
+
+  // Count real clicks so a test can prove *which* button was pressed, rather
+  // than inferring it from the DOM afterwards.
+  window.__clicks = [];
+  document.addEventListener("click", (e) => {
+    window.__clicks.push(e.target.id || e.target.textContent);
+  });
+</script>
+</body>
+</html>
