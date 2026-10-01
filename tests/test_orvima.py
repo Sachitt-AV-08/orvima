@@ -198,11 +198,12 @@ def test_channel_detection(monkeypatch):
 def test_api_sessions_and_goal(monkeypatch):
     from fastapi.testclient import TestClient
 
+    from orvima import __version__
     from orvima.api import app
 
     client = TestClient(app)
     health = client.get("/api/health").json()
-    assert health["ok"] is True and health["version"] == "0.1.0"
+    assert health["ok"] is True and health["version"] == __version__
     tools = client.get("/api/tools").json()
     assert len(tools["tools"]) >= 19
 
