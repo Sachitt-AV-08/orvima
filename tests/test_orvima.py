@@ -30,20 +30,84 @@ TOOL_ARGS = {
     "browse_screenshot": {},
     "browse_extract": {"selector": "body"},
     "browse_eval": {"expression": "1 + 1"},
+    "browse_eval_audit": {},
     "browse_open_tab": {"url": "https://acme.dev"},
     "browse_list_tabs": {},
     "browse_switch_tab": {"index": 0},
     "browse_close_tab": {"index": 0},
 }
 
+#: Tools that need a real browser and therefore cannot work in demo mode. They
+#: must fail with an honest message naming the limitation - not succeed, and not
+#: fail with a generic error either. A tool that pretends to have downloaded a
+#: file is worse than one that admits it cannot.
+DEMO_UNAVAILABLE = {
+    "browse_download": {"selector": "btn"},
+    "browse_set_files": {"selector": "btn", "paths": ["nothing-here.txt"]},
+}
 
-@pytest.mark.parametrize("name", sorted(TOOL_NAMES))
+
+@pytest.mark.parametrize("name", sorted(set(TOOL_NAMES) - set(DEMO_UNAVAILABLE)))
 def test_tool_contract(browser, name):
     if name == "browse_close_tab":  # needs a second tab to be allowed to close one
         assert call_tool(browser, "browse_open_tab", {"url": "https://acme.dev"})["ok"] is True
     result = call_tool(browser, name, TOOL_ARGS[name])
     assert result["ok"] is True, result
     assert "error" not in result
+
+
+@pytest.mark.parametrize("name", sorted(DEMO_UNAVAILABLE))
+def test_a_tool_that_needs_a_real_browser_says_so_plainly(browser, name):
+    """Degrade honestly: the plan's gate for a capability that is absent.
+
+    Three things must hold, and each has failed in this codebase before in some
+    other form - a tool that reports success for work it did not do is the worst
+    outcome available here.
+    """
+    result = call_tool(browser, name, DEMO_UNAVAILABLE[name])
+    assert result["ok"] is False, f"{name} claimed success in demo mode"
+    message = result.get("error", "")
+    assert "demo mode" in message, (
+        f"{name} failed without saying it is a demo-mode limitation: {message!r}"
+    )
+    assert "no real browser" in message, (
+        f"{name} did not explain what is actually missing: {message!r}"
+    )
+    # And it must not look like some other kind of failure.
+    assert "Traceback" not in message and "AttributeError" not in message, (
+        f"{name} leaked an internal error instead of a plain explanation: {message!r}"
+    )
+
+
+def test_the_demo_eval_audit_works_because_it_needs_no_browser(browser):
+    """The audit is readable even with no browser, which is exactly when an
+    operator most wants to know what a session tried to do."""
+    call_tool(browser, "browse_eval", {"expression": "1 + 1", "reason": "a check"})
+    result = call_tool(browser, "browse_eval_audit", {})
+    assert result["ok"] is True
+    assert result["count"] >= 1
+    entry = result["entries"][-1]
+    assert entry["reason"] == "a check", "the stated reason was not recorded"
+    assert entry["expression"] == "1 + 1"
+
+
+def test_demo_eval_admits_it_cannot_measure_mutation(browser):
+    """None, not False.
+
+    The real controller reports ``mutating`` from a before/after DOM signature.
+    The demo browser has no DOM, so it has no measurement - and reporting False
+    would be fabricating evidence that reads exactly like "this was safe". An
+    unknown value must look unknown.
+    """
+    result = call_tool(browser, "browse_eval", {"expression": "1 + 1"})
+    assert result["ok"] is True
+    assert "mutating" in result, "the field should be present even when unknown"
+    assert result["mutating"] is None, (
+        f"demo mode reported mutating={result['mutating']!r}, but it cannot "
+        "measure this - only None is honest"
+    )
+    entry = call_tool(browser, "browse_eval_audit", {})["entries"][-1]
+    assert entry["mutating"] is None, "the audit fabricated a mutation measurement"
 
 
 def test_unknown_tool_raises(browser):
@@ -211,6 +275,14 @@ def test_api_sessions_and_goal(monkeypatch):
 
     created = client.post("/api/sessions", json={"mode": "demo", "goal": "products"}).json()
     sid = created["session"]["id"]
-    ran = client.post(f"/api/sessions/{sid}/goal", json={"goal": "list products"}).json()
+    # `wait=true` is the original one-call contract: dispatch, then return the
+    # outcome. Without it the endpoint returns as soon as the run starts, because
+    # a Sentinel-gated run can block indefinitely waiting for a human and the
+    # API has to stay reachable to receive the answer.
+    ran = client.post(
+        f"/api/sessions/{sid}/goal",
+        json={"goal": "list products"},
+        params={"wait": True, "timeout": 30},
+    ).json()
     assert ran["ok"] is True and ran["summary"]
     # cleanup handled per-process; no real browser is ever launched here

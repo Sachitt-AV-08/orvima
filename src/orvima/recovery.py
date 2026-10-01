@@ -164,6 +164,14 @@ def looks_irreversible(tool: str, args: dict | None) -> tuple[bool, str]:
     identifying = ("selector", "ref", "key", "url")
     if tool in ("browse_click", "browse_hover"):
         identifying += ("text", "value")
+    # For browse_eval the expression *is* the action - there is no other argument
+    # that identifies what will happen. Without this the whole escape hatch runs
+    # unclassified, which is the opposite of what the guard is for.
+    if tool == "browse_eval":
+        js_unsafe, why = looks_irreversible_js(args.get("expression"))
+        if js_unsafe:
+            return True, why
+        identifying += ("expression",)
 
     haystack = " ".join(
         str(v) for k, v in args.items() if k in identifying and v is not None
@@ -172,6 +180,48 @@ def looks_irreversible(tool: str, args: dict | None) -> tuple[bool, str]:
     for word in _IRREVERSIBLE_WORDS:
         if word in haystack:
             return True, f"action mentions {word!r}"
+    return False, ""
+
+
+#: JS that destroys state with no undo, matched on the expression itself.
+#:
+#: A separate list from :data:`_IRREVERSIBLE_WORDS` on purpose. That list matches
+#: words in *page text* - a button called "Clear cart" - so "clear" cannot be
+#: added to it without refusing an ordinary click. In an expression there is no
+#: button involved, only an API call, and ``localStorage.clear()`` really does
+#: destroy the page's state irrecoverably.
+_IRREVERSIBLE_JS = (
+    "localstorage.clear",
+    "sessionstorage.clear",
+    "indexeddb.deletedatabase",
+    ".submit()",
+    "method:'delete'",
+    'method:"delete"',
+    "method: 'delete'",
+    'method: "delete"',
+    "method:'put'",  # a destructive upsert is still a write
+    "caches.delete",
+    ".removechild(",
+    "document.write(",
+    "truncate(",
+    "sendbeacon(",
+    "paymentgateway.charge",
+    "gateway.charge",
+    ".charge(",
+)
+
+
+def looks_irreversible_js(expression: str) -> tuple[bool, str]:
+    """Whether a JS expression destroys something with no undo.
+
+    Checked against the expression *before* it runs, for the same reason the
+    click guard checks the action before the error: once ``localStorage.clear()``
+    has run, deciding it was a mistake is too late.
+    """
+    text = str(expression or "").lower()
+    for pattern in _IRREVERSIBLE_JS:
+        if pattern in text:
+            return True, f"the expression contains {pattern!r}"
     return False, ""
 
 

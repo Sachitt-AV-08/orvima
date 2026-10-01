@@ -1,0 +1,3 @@
+INVOICE 42
+Amount due: 0.00
+This file exists so the download test saves real bytes rather than an empty file.

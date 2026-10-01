@@ -1,0 +1,75 @@
+<!doctype html>
+<!--
+  Exercises the capabilities that need a real browser: a download, a file input,
+  and an expression that mutates the page.
+
+  The download link builds a blob and clicks an anchor. That is deliberate, and it
+  was found by measurement rather than assumption: Chromium does not fire a
+  download event for an <a download> whose href is a relative file:// URL,
+  because a file:// origin is opaque and the download attribute is ignored. A
+  blob is how the overwhelming majority of real applications serve a file anyway,
+  so the fixture matches production rather than the browser's file:// quirk.
+
+  Three download controls, because the interesting cases are the ones that look
+  like success:
+  - #real     triggers an actual file download, with real bytes
+  - #notreal  navigates instead. A naive implementation sees a successful click
+              and a changed page, and reports a download that never happened.
+  - #expired  goes nowhere at all.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>capabilities</title>
+  <style>body { font-family: system-ui; padding: 1rem; } input, button { font: inherit; padding: 6px; }</style>
+</head>
+<body>
+  <h1>Capability fixtures</h1>
+
+  <button id="real" type="button">Download the invoice</button>
+  <a id="notreal" href="nav_target.html">Download link that navigates</a>
+  <a id="expired" href="does-not-exist.txt" download="gone.txt">Expired download</a>
+
+  <form id="upload-form">
+    <input id="cv" type="file" name="cv" accept=".txt" multiple>
+    <!--
+      A page that accepts the upload and then discards it. Setting input.value
+      to "" genuinely empties the FileList, so this produces the real case where
+      set_input_files succeeds, the page ends up holding nothing, and reporting
+      "verified" would be a lie. A page that validates a file and rejects it is
+      ordinary, not contrived.
+    -->
+    <input id="cv-rejecting" type="file" name="reject" multiple>
+  </form>
+
+  <div id="counter">0</div>
+  <button id="bump" type="button">Bump</button>
+
+  <div id="results"></div>
+  <button id="not-a-file-input" type="button">Ordinary button</button>
+
+  <script>
+    window.__log = [];
+    document.getElementById("bump").addEventListener("click", () => {
+      window.__log.push("bump");
+      document.getElementById("counter").textContent = "999";
+    });
+    document.getElementById("cv-rejecting").addEventListener("change", (ev) => {
+      window.__log.push("reject-upload");
+      ev.target.value = "";
+    });
+    document.getElementById("real").addEventListener("click", () => {
+      window.__log.push("download");
+      const contents = "INVOICE 42\nAmount due: 0.00\n"
+        + "This file exists so the download test saves real bytes, not an empty file.\n";
+      const url = URL.createObjectURL(new Blob([contents], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "invoice-42.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+  </script>
+</body>
+</html>

@@ -8,6 +8,8 @@ records what the agent did, which doubles as the demo transcript.
 
 from __future__ import annotations
 
+import time
+
 from .errors import BrowserError
 
 _PAGES = {
@@ -49,6 +51,9 @@ class DemoBrowser:
         self._tabs: list[str] = []
         self._active = 0
         self.log: list[str] = []
+        # Same shape as the real controller's, so a caller reading the audit
+        # works against either.
+        self.eval_audit: list[dict] = []
         self.sent: list[dict] = []
         self._form: dict = {}
 
@@ -192,9 +197,37 @@ class DemoBrowser:
         self.log.append(f"scroll {direction}")
         return self._state()
 
-    def eval(self, expression: str) -> dict:
+    def eval(self, expression: str, reason: str | None = None) -> dict:
         self.log.append(f"eval {expression!r}")
-        return {"result": "ok", **self._state()}
+        self.eval_audit.append(
+            {
+                "at": time.time(),
+                "expression": expression[:500],
+                "reason": reason or "not stated",
+                # The demo browser has no DOM, so nothing can be measured. Saying
+                # so is the honest answer; claiming False would be a fabricated
+                # measurement that reads as "this was safe".
+                "mutating": None,
+                "ok": True,
+                "error": None,
+            }
+        )
+        return {"result": "ok", "mutating": None, **self._state()}
+
+    def eval_audit_trail(self) -> dict:
+        return {"count": len(self.eval_audit), "entries": list(self.eval_audit)}
+
+    def download(self, selector: str, timeout_ms: int = 15000) -> dict:
+        raise BrowserError(
+            "downloads are not available in demo mode - there is no real "
+            "browser behind this. Use a real BrowserController."
+        )
+
+    def set_files(self, selector: str, paths: list[str]) -> dict:
+        raise BrowserError(
+            "attaching files is not available in demo mode - there is no real "
+            "browser behind this. Use a real BrowserController."
+        )
 
     def snapshot(self) -> dict:
         page = _PAGES.get(self._url, _PAGES["https://acme.dev"])

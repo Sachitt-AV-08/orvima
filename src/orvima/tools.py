@@ -262,12 +262,77 @@ def tool_browse_extract(browser, selector: str | None = None, ref: str | None = 
         return _error(exc, _candidates(browser))
 
 
-def tool_browse_eval(browser, expression: str) -> dict:
-    """Run a small JS expression in the page (read-only where possible)."""
+def tool_browse_eval(browser, expression: str, reason: str | None = None) -> dict:
+    """Run a JS expression in the page. An escape hatch, not a sandbox.
+
+    Use this only when no purpose-built tool fits - the tools cover clicks,
+    typing, frames and shadow DOM, and reaching for this first hides bugs that a
+    normal action would have surfaced.
+
+    State ``reason``: it is recorded in an audit trail alongside the expression,
+    because an agent that can run arbitrary JS on a logged-in page needs a record
+    of what it ran and why.
+
+    Two things are enforced rather than promised:
+
+    - An expression that looks irreversible (a delete, a payment, a form submit)
+      is refused **before it runs**, using the same classifier that protects a
+      click. The previous version of this docstring claimed "read-only where
+      possible" and nothing enforced it.
+    - ``mutating`` reports whether the expression actually changed the page, from
+      a before/after DOM signature - so "read-only" is measured, not assumed.
+    """
     try:
-        return {"ok": True, **browser.eval(expression)}
+        return {"ok": True, **browser.eval(expression, reason=reason)}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+def tool_browse_eval_audit(browser, *_args, **_kw) -> dict:
+    """Everything browse_eval has run this session: expression, reason, effect.
+
+    Newest last. Read this after any eval to see exactly what ran.
+    """
+    try:
+        return {"ok": True, **browser.eval_audit_trail()}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def tool_browse_download(browser, selector: str | None = None, ref: str | None = None,
+                         timeout_ms: int = 15000) -> dict:
+    """Click something that downloads a file, and save it locally.
+
+    Returns ``savedTo``, ``filename`` and ``bytes``. Files go to
+    ``~/.orvima/downloads`` unless ``ORVIMA_DOWNLOAD_DIR`` says otherwise.
+
+    Fails explicitly when no download starts. That is not a rare edge case - an
+    expired link, a permission prompt or a session timeout all look exactly like
+    a working click - so this never reports success on a click alone.
+    """
+    try:
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.download(sel, timeout_ms=timeout_ms)}
+    except Exception as exc:
+        return _error(exc, _candidates(browser))
+
+
+def tool_browse_set_files(browser, paths: list[str], selector: str | None = None,
+                          ref: str | None = None) -> dict:
+    """Attach files to an ``<input type=file>``.
+
+    ``paths`` are local file paths. Returns ``pageSaw`` - what the page's own
+    FileList ended up holding - because attaching the wrong file silently is how
+    a resume goes out with someone else's CV.
+
+    Fails if a path does not exist or the target is not a file input. It will not
+    guess, and it will not attach an empty selection.
+    """
+    try:
+        sel = _resolve(browser, ref, selector)
+        return {"ok": True, **browser.set_files(sel, list(paths or []))}
+    except Exception as exc:
+        return _error(exc, _candidates(browser))
 
 
 # --------------------------------------------------------------- tabs ----
@@ -319,6 +384,9 @@ TOOLS = (
     tool_browse_screenshot,
     tool_browse_extract,
     tool_browse_eval,
+    tool_browse_eval_audit,
+    tool_browse_download,
+    tool_browse_set_files,
     tool_browse_open_tab,
     tool_browse_list_tabs,
     tool_browse_switch_tab,

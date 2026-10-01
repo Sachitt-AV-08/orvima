@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -31,6 +32,7 @@ from .expectations import (
     ExpectationSet,
 )
 from .identity import ElementIdentity, RefRegistry
+from .recovery import looks_irreversible
 
 DEFAULT_PROFILE = str(Path.home() / ".orvima" / "profile")
 
@@ -303,6 +305,32 @@ _OUTLINE_LIMIT = 60 * 4
 _REF_SELECTOR_RE = re.compile(r'^\[data-orvima-ref="((?:f(\d+):)?e(\d+))"\]$')
 
 
+def attachment_verified(attached, resolved) -> bool:
+    """Whether the page really holds the files we said we attached.
+
+    Three ways this is False, and each is a way a caller could otherwise be told
+    a resume was ready to send:
+
+    - the readback failed entirely (``attached is None``) - the attachment was
+      never confirmed
+    - the page holds nothing, or holds a different number of files - a filtered
+      or rejected upload
+    - the page holds a *different* file - the worst case, because something was
+      attached and it was the wrong thing
+
+    Named rather than inlined so the rule can be tested directly. Reaching the
+    "page holds the wrong file" case through a real page is contrived, and a rule
+    that cannot be tested is a rule that quietly stops being true.
+    """
+    if attached is None or not resolved:
+        return False
+    if len(attached) != len(resolved):
+        return False
+    got = sorted(f.get("name") for f in attached)
+    want = sorted(Path(p).name for p in resolved)
+    return got == want
+
+
 def _bare_ref(ref: str) -> str:
     """The eN part of a ref, dropping any frame prefix.
 
@@ -378,6 +406,7 @@ class BrowserController:
         profile_dir: str | None = None,
         attach: str | None = None,
         attach_tab: str | None = None,
+        download_dir: str | None = None,
     ):
         self._base_url = base_url
         env_headless = os.environ.get("ORVIMA_HEADLESS")
@@ -398,6 +427,14 @@ class BrowserController:
         self._registry = RefRegistry()
         # ref -> frame index, so an f2:e1 ref is looked up in frame 2.
         self._ref_frames: dict[str, int] = {}
+        # Where downloads are saved. Overridable per instance.
+        self._download_dir = download_dir or os.environ.get(
+            "ORVIMA_DOWNLOAD_DIR", str(Path.home() / ".orvima" / "downloads")
+        )
+        # A record of every eval that ran, for an agent holding arbitrary JS on a
+        # logged-in page. Bounded so it cannot become a leak.
+        self.eval_audit: list[dict] = []
+        self.eval_audit_limit = 200
 
     def start(self) -> None:
         from playwright.sync_api import sync_playwright
@@ -447,6 +484,7 @@ class BrowserController:
             elif self._channel:
                 self._context = self._pw.chromium.launch_persistent_context(
                     self._profile_dir,
+            accept_downloads=True,
                     channel=self._channel,
                     headless=self._headless,
                     args=["--disable-blink-features=AutomationControlled"],
@@ -454,6 +492,7 @@ class BrowserController:
             else:
                 self._context = self._pw.chromium.launch_persistent_context(
                     self._profile_dir,
+            accept_downloads=True,
                     headless=self._headless,
                     args=["--disable-blink-features=AutomationControlled"],
                 )
@@ -882,12 +921,178 @@ class BrowserController:
         self.eval(amount)
         return self._state()
 
-    def eval(self, expression: str) -> dict:
+    def eval(self, expression: str, reason: str | None = None) -> dict:
+        """Run a JS expression in the page, with an audit record.
+
+        This is an escape hatch, not a sandbox. The previous docstring claimed
+        "read-only where possible" and nothing enforced it - arbitrary JS runs
+        with full page privileges. Rather than pretend, this makes the two things
+        that matter visible and checked:
+
+        - **Irreversible JS is refused before it runs.** An expression is
+          classified with the same machinery that protects a click, so
+          ``fetch('/api/delete-all')`` or ``document.forms[0].submit()`` is
+          stopped on the *action*, before the error - or the damage - exists.
+          Classification happens from the expression text alone, so this costs
+          nothing and cannot be raced.
+        - **Mutation is reported, not assumed.** The DOM signature is compared
+          before and after, so the caller learns whether the expression actually
+          changed anything rather than having to guess.
+
+        Every call is appended to :attr:`eval_audit`, because an agent that can
+        run arbitrary JS in a logged-in page needs a record of what it ran.
+        """
+        irreversible, why = looks_irreversible("browse_eval", {"expression": expression})
+        if irreversible:
+            raise BrowserError(
+                f"refusing to run this expression: {why}. It looks like a one-way "
+                f"action and eval cannot be undone or retried safely. Use the "
+                f"purpose-built tool instead, or rephrase if this is in fact "
+                f"read-only.\n  expression: {expression[:200]}"
+            )
+
+        before = self._dom_signature()
         try:
             result = self.page.evaluate(expression)
         except Exception as exc:
+            self._record_eval(expression, reason, mutated=None, ok=False, error=str(exc))
             raise BrowserError(f"eval failed: {exc}") from exc
-        return {"result": result, **self._state()}
+        after = self._dom_signature()
+        mutated = before != after
+
+        self._record_eval(expression, reason, mutated=mutated, ok=True, error=None)
+        return {
+            "result": result,
+            "mutating": mutated,
+            "auditIndex": len(self.eval_audit) - 1,
+            **self._state(),
+        }
+
+    def _record_eval(self, expression, reason, *, mutated, ok, error) -> None:
+        """Append one entry to the audit trail."""
+        self.eval_audit.append(
+            {
+                "at": time.time(),
+                "expression": expression[:500],
+                "reason": reason or "not stated",
+                "mutating": mutated,
+                "ok": ok,
+                "error": (error or "")[:200] or None,
+            }
+        )
+        # Bounded: an audit trail that grows without limit is a memory leak, and
+        # an unbounded one is no more useful to read than the last hundred.
+        if len(self.eval_audit) > self.eval_audit_limit:
+            del self.eval_audit[: len(self.eval_audit) - self.eval_audit_limit]
+
+    def eval_audit_trail(self) -> dict:
+        """The eval audit, newest last. Cheap to call; meant to be read."""
+        return {"count": len(self.eval_audit), "entries": list(self.eval_audit)}
+
+    def download(self, selector: str, timeout_ms: int = 15000) -> dict:
+        """Click something that triggers a download and save the file.
+
+        Returns the saved path and the browser's suggested filename. Fails
+        explicitly when no download starts, rather than reporting success because
+        a click was delivered - a download that never began is the common case
+        (an expired link, a permission prompt) and must not look like a win.
+        """
+        self._require_open()
+        selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
+        try:
+            with self.page.expect_download(timeout=timeout_ms) as info:
+                target.click(selector, timeout=10000)
+            download = info.value
+        except Exception as exc:
+            raise BrowserError(
+                f"clicking {selector!r} did not start a download within "
+                f"{timeout_ms}ms: {exc}. The link may be expired, or the site may "
+                "be waiting on a permission prompt or a login."
+            ) from exc
+
+        suggested = download.suggested_filename
+        target_path = Path(self._download_dir) / suggested
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            download.save_as(str(target_path))
+        except Exception as exc:
+            raise BrowserError(
+                f"the download started as {suggested!r} but could not be saved "
+                f"to {target_path}: {exc}"
+            ) from exc
+
+        size = target_path.stat().st_size if target_path.exists() else 0
+        return {
+            "savedTo": str(target_path),
+            "filename": suggested,
+            "bytes": size,
+            **self._state(),
+        }
+
+    def set_files(self, selector: str, paths: list[str]) -> dict:
+        """Attach files to an ``<input type=file>``.
+
+        Fails explicitly when the target is not a file input, or a path does not
+        exist. Silently attaching nothing - or attaching the wrong file - is how
+        a resume goes out with the wrong attachment.
+        """
+        self._require_open()
+        selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
+
+        if not paths:
+            # set_input_files([]) succeeds and clears the field, so an empty
+            # list is a real action rather than a no-op - but it is never what
+            # the caller meant by "attach these files", and reporting success
+            # would hide that nothing was attached.
+            raise BrowserError(
+                "no files given. This attaches files; an empty list would "
+                "silently clear the field instead, so it is refused. Pass at "
+                "least one path, or use a different tool to clear it."
+            )
+
+        resolved: list[str] = []
+        for raw in paths or []:
+            path = Path(raw).expanduser()
+            if not path.is_file():
+                raise BrowserError(
+                    f"no such file: {raw!r}. Attach a real path; the contents "
+                    "cannot be invented."
+                )
+            resolved.append(str(path.resolve()))
+
+        # set_input_files lives on Locator, not on Page - calling it on the page
+        # raises a TypeError that reads like a bad element rather than a bad call.
+        locator = target.locator(selector)
+        try:
+            locator.set_input_files(resolved)
+        except Exception as exc:
+            raise BrowserError(
+                f"could not attach files to {selector!r}: {exc}. The element is "
+                "probably not an <input type=file>."
+            ) from exc
+
+        # Read back what the page actually holds. set_input_files silently
+        # accepts a directory or a non-file, and the page can then reject it
+        # later with no clue why.
+        attached = []
+        try:
+            attached = target.eval_on_selector(
+                selector,
+                "el => Array.from(el.files || []).map(f => ({name: f.name, size: f.size}))",
+            )
+        except Exception:
+            attached = None
+
+        return {
+            "attached": resolved,
+            "pageSaw": attached,
+            "verified": attachment_verified(attached, resolved),
+            **self._state(),
+        }
 
     # ----------------------------------------------------------------- tabs ----
     def open_tab(self, url: str) -> dict:
