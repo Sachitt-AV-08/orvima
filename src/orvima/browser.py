@@ -125,8 +125,21 @@ _BROWSER_PATHS = {
     ),
 }
 
+#: Walks a document *and* its open shadow roots and same-origin frames, so a
+#: snapshot sees what a user sees. Playwright reaches all of these through its
+#: own API, but a single JS walk keeps the outline logic in one place and means
+#: the same code produces the ref numbering the identity registry depends on.
+#:
+#: Cross-origin frames are reported by src and nothing more. Their DOM is not
+#: reachable and must not be pretended otherwise.
 _OUTLINE_JS = """(() => {
   const out = [];
+
+  // Depth is bounded. A page that nests frames or shadow roots inside each
+  // other forever would otherwise hang the agent, and a snapshot that never
+  // returns is indistinguishable from a hung browser.
+  const MAX_DEPTH = 6;
+
   const text = (el) => (el.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 400);
   const role = (el) => {
     if (el.tagName === "A" || el.tagName === "BUTTON") return el.tagName.toLowerCase();
@@ -144,49 +157,86 @@ _OUTLINE_JS = """(() => {
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
-  const items = document.querySelectorAll(
-    "a,button,input,textarea,select,label,h1,h2,h3,h4,h5,h6,[role='button'],[role='link'],[role='textbox'],[aria-label]"
-  );
+  // Which document an element belongs to, so the snapshot can say whether a ref
+  // sits behind a shadow boundary. querySelectorAll on a document already
+  // pierces open shadow roots, so most elements are found directly and this
+  // only confirms it rather than driving a second traversal.
+  const inShadowRoot = (el) => {
+    try {
+      const root = el.getRootNode ? el.getRootNode() : document;
+      return Boolean(root && root.host);
+    } catch (_) { return false; }
+  };
+
+  const shadowHosts = Array.from(document.querySelectorAll("*")).filter((el) => {
+    try { return Boolean(el.shadowRoot); } catch (_) { return false; }
+  }).length;
+
+  const seen = new Set();
   let idx = 0;
-  for (const el of items) {
-    if (!isVisible(el)) continue;
-    idx++;
-    const ref = "e" + idx;
-    try { el.setAttribute("data-orvima-ref", ref); } catch (_) {}
-    const r = role(el);
-    const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") ||
-                  el.getAttribute("title") || (el.tagName === "LABEL" ? text(el) : "");
-    const own = text(el);
-    // Redact password values in snapshots
-    const isPassword = el.type === "password";
-    const rawVal = el.value !== undefined && el.value ? String(el.value).slice(0, 80) : "";
-    const val = (el.value !== undefined && el.value)
-        ? ` value=${JSON.stringify(isPassword ? "***" : rawVal)}`
-        : "";
-    const info = [r, label || own, val].filter(Boolean).join(" | ");
-    if (info) {
-      out.push({
-        ref,
-        tag: el.tagName.toLowerCase(),
-        role: r,
-        label: label || own,
-        text: own,
-        value: isPassword ? "***" : (el.value || ""),
-      });
+  const LIMIT = 60;
+
+  const walk = (root, depth, frameChain) => {
+    if (depth > MAX_DEPTH || idx >= LIMIT) return;
+    let items;
+    try { items = root.querySelectorAll(
+      "a,button,input,textarea,select,label,h1,h2,h3,h4,h5,h6,[role='button'],[role='link'],[role='textbox'],[aria-label]"
+    ); }
+    catch (_) { return; }
+
+    for (const el of items) {
+      if (idx >= LIMIT) return;
+      if (seen.has(el)) continue;
+      seen.add(el);
+      if (!isVisible(el)) continue;
+      idx++;
+      const ref = "e" + idx;
+      try { el.setAttribute("data-orvima-ref", ref); } catch (_) {}
+      const r = role(el);
+      const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") ||
+                    el.getAttribute("title") || (el.tagName === "LABEL" ? text(el) : "");
+      const own = text(el);
+      // Redact password values in snapshots
+      const isPassword = el.type === "password";
+      const rawVal = el.value !== undefined && el.value ? String(el.value).slice(0, 80) : "";
+      const val = (el.value !== undefined && el.value)
+          ? ` value=${JSON.stringify(isPassword ? "***" : rawVal)}`
+          : "";
+      const info = [r, label || own, val].filter(Boolean).join(" | ");
+      if (info) {
+        out.push({
+          ref,
+          tag: el.tagName.toLowerCase(),
+          role: r,
+          label: label || own,
+          text: own,
+          value: isPassword ? "***" : (el.value || ""),
+          // How to get back to this element, for click/type/fill/extract.
+          inShadow: inShadowRoot(el),
+          framePath: frameChain,
+        });
+      }
     }
-    if (idx >= 60) break;
-  }
+
+    // Open shadow roots are already covered by querySelectorAll piercing, but a
+    // nested root inside a root still needs an explicit pass for elements the
+    // host's own query cannot reach.
+    for (const el of root.querySelectorAll("*")) {
+      if (idx >= LIMIT) return;
+      if (el.shadowRoot) walk(el.shadowRoot, depth + 1, frameChain);
+    }
+  };
+
+  walk(document, 0, []);
+
   const body = document.body ? text(document.body) : "";
-  const iframeCount = document.querySelectorAll("iframe").length;
-  const shadowHosts = document.querySelectorAll("*[shadow-root]").length;
   return {
     url: location.href,
     title: document.title,
     items: out,
     body: body.slice(0, 3000),
-    truncated: out.length >= 60,
-    iframes: iframeCount ? iframeCount + " iframe(s) — not supported yet" : "none",
-    shadowDom: shadowHosts ? shadowHosts + " shadow host(s) — not supported yet" : "none"
+    truncated: idx >= LIMIT,
+    shadowHosts: shadowHosts,
   };
 })()
 """
@@ -197,7 +247,30 @@ _OUTLINE_JS = """(() => {
 #: Takes the ref as an argument rather than reading a global, so a page cannot
 #: spoof the value and convince the guard it is looking at something else.
 _IDENTITY_JS = """(ref) => {
-  const el = document.querySelector('[data-orvima-ref="' + ref + '"]');
+  // In-page querySelectorAll does NOT pierce shadow roots - only Playwright's own
+  // engine does. A plain document search therefore reports every shadow-hosted
+  // ref as gone, and the guard then refuses a perfectly valid click. Walk the
+  // open roots by hand.
+  const sel = '[data-orvima-ref="' + ref + '"]';
+  let el = null;
+  const search = (root, depth) => {
+    if (el || depth > 6) return;
+    try {
+      const direct = root.querySelector(':scope > ' + sel);
+      if (direct) { el = direct; return; }
+    } catch (_) { /* fall through to the full query */ }
+    try {
+      const hit = root.querySelector(sel);
+      if (hit) { el = hit; return; }
+    } catch (_) { /* ignore */ }
+    let hosts;
+    try { hosts = root.querySelectorAll('*'); } catch (_) { return; }
+    for (const host of hosts) {
+      if (el) return;
+      if (host.shadowRoot) search(host.shadowRoot, depth + 1);
+    }
+  };
+  search(document, 0);
   if (!el) return null;
   const text = (e) => (e.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 400);
   const role = (e) => {
@@ -213,6 +286,69 @@ _IDENTITY_JS = """(ref) => {
     text: text(el),
   };
 }"""
+
+
+#: Cap on outlined elements, matching what the per-frame JS walk allows.
+_OUTLINE_LIMIT = 60 * 4
+
+#: Matches the ref selector tools hand around, including the per-frame prefix.
+#: Refs are ``e3`` on the main document and ``f2:e3`` inside a frame, so a regex
+#: that only accepted ``e3`` silently sent every frame ref down the main-document
+#: path - which is how a click aimed at a frame timed out.
+_REF_SELECTOR_RE = re.compile(r'^\[data-orvima-ref="((?:f(\d+):)?e(\d+))"\]$')
+
+
+def _bare_ref(ref: str) -> str:
+    """The eN part of a ref, dropping any frame prefix.
+
+    Defined once because getting it wrong is silent: an empty result turns into
+    the selector ``[data-orvima-ref=""]``, which matches nothing and then times
+    out for ten seconds on a page that was perfectly readable.
+
+    ``partition(":")[2]`` is the obvious implementation and is wrong - for an
+    unprefixed ref like ``e3`` there is no separator, so it returns the empty
+    string rather than the ref itself.
+    """
+    head, sep, tail = ref.partition(":")
+    return tail if sep and head.startswith("f") and head[1:].isdigit() else ref
+
+
+def _describe_frames(total: int, traversed: int, not_traversed: list[dict]) -> str:
+    """A short, honest account of what happened to the frames on this page."""
+    if not total:
+        return "none"
+    if not not_traversed:
+        return f"{total} frame(s), all traversed"
+    return (
+        f"{total} frame(s); {traversed} traversed; "
+        f"{len(not_traversed)} not reachable (see notTraversed)"
+    )
+
+
+def _frame_is_readable(frame, data: dict) -> bool:
+    """Whether a frame really gave us its DOM.
+
+    Chromium exposes a cross-origin frame as a frame object that ``evaluate``
+    accepts without raising, returning an empty result. Counting that as a
+    traversal produces a snapshot claiming "all frames traversed" when part of
+    the page was never read - the exact dishonesty this phase is meant to avoid.
+    """
+    url = (frame.url or "").strip()
+    if not url:
+        return False
+    if url.startswith("chrome-error://") or url.startswith("about:blank"):
+        # A load failure or an empty placeholder, never real content.
+        return False
+    try:
+        ready = frame.evaluate("() => document.readyState")
+    except Exception:
+        return False
+    if not ready:
+        return False
+    # A readable document with genuinely nothing in it is legitimate - an empty
+    # frame is not the same as an unreadable one, and the outline having no
+    # items is not by itself evidence of anything.
+    return True
 
 
 def detect_channel() -> str | None:
@@ -255,6 +391,8 @@ class BrowserController:
         # What each ref described at the last snapshot. Populated by snapshot()
         # and consulted before every ref-based action.
         self._registry = RefRegistry()
+        # ref -> frame index, so an f2:e1 ref is looked up in frame 2.
+        self._ref_frames: dict[str, int] = {}
 
     def start(self) -> None:
         from playwright.sync_api import sync_playwright
@@ -351,6 +489,32 @@ class BrowserController:
 
     # ------------------------------------------------------- element identity --
 
+    def _target(self, selector: str):
+        """The Playwright target a selector should run against.
+
+        For a ref that lives in a frame, that is the frame. For a plain selector
+        it is the page, exactly as before - the 19-tool contract is unchanged,
+        this only decides *where* an already-parsed ref is looked up.
+        """
+        m = _REF_SELECTOR_RE.match(selector or "")
+        if not m:
+            return self.page
+        return self._frame_for_ref(m.group(1))
+
+    @staticmethod
+    def _locate(selector: str) -> str:
+        """Rewrite a ref selector so it is valid in whichever frame owns the ref.
+
+        Inside a frame the attribute is written as a plain ``eN`` - that frame's
+        own document, not the top one - so the frame prefix has to be stripped
+        back off for the attribute selector to mean anything. Group 1 is the full
+        ref, so the eN form is just its last segment.
+        """
+        m = _REF_SELECTOR_RE.match(selector or "")
+        if not m:
+            return selector
+        return f'[data-orvima-ref="{_bare_ref(m.group(1))}"]'
+
     def _guard_ref(self, selector: str) -> str:
         """Check that a ref still means what the last snapshot said it meant.
 
@@ -365,7 +529,7 @@ class BrowserController:
         on the page. Raises when the ref is stale with no unambiguous
         substitute, or when it now points at something else entirely.
         """
-        m = re.match(r'^\[data-orvima-ref="(e\d+)"\]$', selector or "")
+        m = _REF_SELECTOR_RE.match(selector or "")
         if not m:
             return selector  # a plain selector is the caller's business
         ref = m.group(1)
@@ -399,6 +563,28 @@ class BrowserController:
             )
         return replacement
 
+    def _frame_for_ref(self, ref: str):
+        """The frame a ref lives in, or the main page.
+
+        Refs are namespaced per frame, so this is a lookup rather than a guess.
+        Without it, an ``f2:e1`` ref would be looked up on the main document,
+        find nothing, and be reported stale when the element is sitting right
+        there in the frame.
+        """
+        # The prefix is authoritative; the registry is the fallback for refs
+        # whose prefix was lost in transit.
+        head, _, _tail = ref.partition(":")
+        if head.startswith("f") and head[1:].isdigit():
+            index = int(head[1:])
+        else:
+            index = getattr(self, "_ref_frames", {}).get(ref, 0)
+        if not index:
+            return self.page
+        try:
+            return self.page.frames[index]
+        except (IndexError, AttributeError):
+            return self.page
+
     def _current_identity(self, ref: str):
         """What the ref points at right now, or None if nothing matches.
 
@@ -408,17 +594,19 @@ class BrowserController:
         still-valid ref down the re-resolution path and rebuilt a text-based
         selector that then timed out on a perfectly good ref.
         """
+        bare = _bare_ref(ref)
+        frame = self._frame_for_ref(ref)
         # Presence first: if the attribute is still there, the ref resolves and
         # the only question is whether it resolves to the *right* element.
         try:
-            count = self.page.locator(f'[data-orvima-ref="{ref}"]').count()
+            count = frame.locator(f'[data-orvima-ref="{bare}"]').count()
         except Exception:
             count = 0
         if count == 0:
             return None
 
         try:
-            raw = self.page.evaluate(_IDENTITY_JS, ref)
+            raw = frame.evaluate(_IDENTITY_JS, bare)
         except Exception:
             raw = None
         if not raw:
@@ -503,19 +691,23 @@ class BrowserController:
         except Exception:
             return ""
 
-    def _read_value(self, selector: str) -> str | None:
+    def _read_value(self, selector: str, target=None) -> str | None:
         """Read a field's current value, whichever kind of element it is.
 
         `input_value()` only works on input/textarea/select, so contenteditable
         targets (rich editors, tiptap/ProseMirror composers) used to read back
         as a hard failure. Returns None only if the element can't be found.
+
+        `target` is the frame a ref lives in, so verification does not silently
+        read the wrong document.
         """
+        target = target if target is not None else self.page
         try:
-            return self.page.input_value(selector)
+            return target.input_value(selector)
         except Exception:
             pass
         try:
-            return self.page.inner_text(selector)
+            return target.inner_text(selector)
         except Exception:
             return None
 
@@ -527,9 +719,11 @@ class BrowserController:
     def click(self, selector: str) -> dict:
         self._require_open()
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         before_sig = self._dom_signature()
         try:
-            self.page.click(selector, timeout=10000)
+            target.click(selector, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"click {selector!r} failed: {exc}") from exc
         after_sig = self._dom_signature()
@@ -538,8 +732,10 @@ class BrowserController:
 
     def hover(self, selector: str) -> dict:
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         try:
-            self.page.hover(selector, timeout=10000)
+            target.hover(selector, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"hover {selector!r} failed: {exc}") from exc
         return self._state()
@@ -547,13 +743,15 @@ class BrowserController:
     def type(self, selector: str, text: str, delay_ms: int | None = None) -> dict:
         self._require_open()
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         delay = _type_delay_ms() if delay_ms is None else max(0, int(delay_ms))
         try:
-            self.page.click(selector, timeout=10000)
+            target.click(selector, timeout=10000)
             self.page.keyboard.type(text, delay=delay)
         except Exception as exc:
             raise BrowserError(f"type into {selector!r} failed: {exc}") from exc
-        value = self._read_value(selector)
+        value = self._read_value(selector, target)
         if value is None:
             raise BrowserError(f"typed into {selector!r} but could not read it back to verify")
         verified = value.strip() == text.strip()
@@ -562,11 +760,13 @@ class BrowserController:
     def fill(self, selector: str, text: str) -> dict:
         self._require_open()
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         try:
-            self.page.fill(selector, text, timeout=10000)
+            target.fill(selector, text, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"fill {selector!r} failed: {exc}") from exc
-        value = self._read_value(selector)
+        value = self._read_value(selector, target)
         if value is None:
             raise BrowserError(f"filled {selector!r} but could not read it back to verify")
         verified = value.strip() == text.strip()
@@ -574,8 +774,10 @@ class BrowserController:
 
     def select(self, selector: str, value: str) -> dict:
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         try:
-            values = self.page.select_option(selector, value, timeout=10000)
+            values = target.select_option(selector, value, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"select {selector!r}={value!r} failed: {exc}") from exc
         verified = value in (values or [])
@@ -662,14 +864,105 @@ class BrowserController:
 
     # --------------------------------------------------------------- reads ----
     def snapshot(self) -> dict:
-        try:
-            data = self.page.evaluate(_OUTLINE_JS)
-        except Exception as exc:
-            raise BrowserError(f"snapshot failed: {exc}") from exc
-        # Record what each ref described, so a later click can tell whether the
+        """Outline the page, including open shadow roots and same-origin frames.
+
+        Each frame is walked separately through Playwright's own frame API rather
+        than by recursing into ``contentDocument`` from the parent. That matters:
+        on a ``file://`` page every origin is opaque, so ``contentDocument`` is
+        null for a frame that is in truth perfectly reachable - a same-origin
+        child was being reported as cross-origin and skipped. Playwright already
+        knows which frames exist and can evaluate in each one.
+
+        Refs are namespaced per frame (``f2:e3``) because each frame numbers its
+        own elements from 1, and a bare ``e3`` would be ambiguous the moment a
+        page has more than one frame.
+        """
+        frames = []
+        for n, frame in enumerate(self.page.frames):
+            try:
+                frames.append((n, frame, frame.evaluate(_OUTLINE_JS)))
+            except Exception as exc:  # a frame that cannot be read is reported
+                frames.append((n, frame, None, str(exc)[:120]))
+
+        main = next((d for _, _, d, *rest in frames if d and not rest), None)
+        if main is None:
+            first = next((d for _, _, d, *_ in frames if d), None)
+            if first is None:
+                raise BrowserError("snapshot failed: no frame could be read")
+            main = first
+
+        items: list[dict] = []
+        not_traversed: list[dict] = []
+        traversed = 0
+        # Playwright lists the main document first; that is the frame whose url
+        # and title the snapshot reports.
+        main_index = 0
+        for entry in frames:
+            n, frame, data = entry[0], entry[1], entry[2]
+            # A cross-origin frame that failed to load - or was blocked - shows up
+            # as a frame Chromium can evaluate in but which has no document, an
+            # empty url, or no reachable items. Treating that as "traversed" is a
+            # false all-clear: the planner would believe it had read the frame.
+            if data is not None and n != main_index and not _frame_is_readable(frame, data):
+                not_traversed.append(
+                    {
+                        "src": (frame.url or "(no url - blocked or failed to load)")[:160],
+                        "name": frame.name or "",
+                        "reason": (
+                            "frame is cross-origin or failed to load, so its DOM is "
+                            "not reachable from this page"
+                        ),
+                    }
+                )
+                continue
+            if data is None:
+                # A frame the browser could not give us. Reported by src and
+                # reason, never silently dropped - a planner needs to know part
+                # of the page is out of reach.
+                not_traversed.append(
+                    {
+                        "src": (frame.url or "(unknown)")[:160],
+                        "name": frame.name or "",
+                        "reason": (
+                            f"frame could not be read: {entry[3]}"
+                            if len(entry) > 3
+                            else "frame could not be read"
+                        ),
+                    }
+                )
+                continue
+            if n != main_index:
+                traversed += 1
+            prefix = "" if n == main_index else f"f{n}:"
+            for item in data.get("items", []):
+                entry_item = dict(item)
+                entry_item["ref"] = f"{prefix}{item['ref']}"
+                entry_item["frame"] = n
+                if n != main_index:
+                    entry_item["framePath"] = [frame.name or f"frame-{n}"]
+                items.append(entry_item)
+
+        shadow_hosts = sum(
+            (d.get("shadowHosts") or 0) for _, _, d, *_ in frames if d
+        )
+        out = {
+            **main,
+            "items": items,
+            "truncated": main.get("truncated") or len(items) >= _OUTLINE_LIMIT,
+            "iframes": _describe_frames(len(self.page.frames) - 1, traversed, not_traversed),
+            "shadowDom": (
+                f"{shadow_hosts} open shadow host(s) traversed"
+                if shadow_hosts
+                else "none"
+            ),
+            # Anything not walked is named here rather than quietly omitted.
+            "notTraversed": not_traversed,
+        }
+        # Record what each ref described, so a later action can tell whether the
         # ref still means the same element.
-        self._registry.record_snapshot(data.get("items"))
-        return data
+        self._registry.record_snapshot(items)
+        self._ref_frames = {i["ref"]: i.get("frame", main_index) for i in items}
+        return out
 
     def screenshot(self) -> dict:
         try:
@@ -680,8 +973,10 @@ class BrowserController:
 
     def extract(self, selector: str) -> dict:
         selector = self._guard_ref(selector)
+        target = self._target(selector)
+        selector = self._locate(selector)
         try:
-            el = self.page.locator(selector).first
+            el = target.locator(selector).first
             text = el.inner_text() if el.count() else ""
         except Exception as exc:
             raise BrowserError(f"extract {selector!r} failed: {exc}") from exc

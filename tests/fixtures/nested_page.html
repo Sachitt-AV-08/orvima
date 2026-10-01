@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Three nesting shapes in one page, so traversal can be tested for real.
+
+  1. SHADOW (closed-ish in spirit, but open so Playwright can reach it) - a
+     custom element whose shadow root holds the only copy of its form. Anything
+     walking document.querySelectorAll finds nothing here.
+  2. IFRAME - a same-origin frame with its own form.
+  3. IFRAME_NESTED - a same-origin frame *inside* a shadow root, so traversal
+     has to handle both at once.
+  4. CROSS_ORIGIN - a frame pointing at a different origin. Browsers refuse to
+     expose its DOM, and pretending otherwise would be a lie. The snapshot must
+     say so explicitly rather than skipping it silently.
+
+  Every control records clicks on window.__log in its own frame, so a test can
+  prove which element was really pressed rather than inferring it afterwards.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>deep nesting</title>
+  <style>
+    body { font-family: system-ui; padding: 1rem; }
+    iframe { width: 420px; height: 160px; border: 1px solid #ccc; }
+    .note { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Deep nesting</h1>
+  <p class="note">Shadow roots, same-origin frames, and one frame we cannot reach.</p>
+
+  <my-widget id="host"></my-widget>
+
+  <iframe id="same-origin" src="nested_content.html" title="same origin"></iframe>
+
+  <iframe id="cross-origin" src="https://example.invalid/blocked" title="cross origin"></iframe>
+
+<script>
+  window.__log = [];
+
+  class MyWidget extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = `
+        <style>:host { display: block; } input, button { font: inherit; padding: 4px; }</style>
+        <input id="shadow-email" type="email" placeholder="Shadow email" aria-label="Shadow email">
+        <button id="shadow-submit">Shadow submit</button>
+        <p id="shadow-note">not visible from the light DOM</p>
+        <iframe id="nested-frame" src="nested_content.html" title="nested"></iframe>
+      `;
+      root.getElementById("shadow-submit").addEventListener("click", () => {
+        root.getElementById("shadow-email").value = "shadow@example.com";
+        window.__log.push("shadow-submit");
+      });
+    }
+  }
+  customElements.define("my-widget", MyWidget);
+</script>
+</body>
+</html>

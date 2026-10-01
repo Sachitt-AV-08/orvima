@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>nested content</title>
+  <style>body { font-family: system-ui; padding: 0.5rem; } button, input { font: inherit; }</style>
+</head>
+<body>
+  <h2>Frame content</h2>
+  <input id="frame-email" type="email" placeholder="Frame email" aria-label="Frame email">
+  <button id="frame-submit">Frame submit</button>
+  <p id="frame-note">reachable only from inside the frame</p>
+  <script>
+    // Recorded on the frame's own window, so the parent can read it back.
+    window.__log = [];
+    document.getElementById("frame-submit").addEventListener("click", () => {
+      document.getElementById("frame-email").value = "frame@example.com";
+      window.__log.push("frame-submit");
+    });
+  </script>
+</body>
+</html>
