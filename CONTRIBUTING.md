@@ -9,7 +9,7 @@ git clone https://github.com/Sachitt-AV-08/orvima.git
 cd orvima
 uv venv && uv pip install -e '.[dev]'
 uv run pytest          # all tests green, fast, offline
-uv run orvima --demo chats  # try the offline tour
+uv run orvima demo     # try the offline tour
 ```
 
 ## Development Guidelines
@@ -24,7 +24,6 @@ uv run orvima --demo chats  # try the offline tour
 - **All tests must pass** before PR: `uv run pytest`
 - **New features need tests** — demo-mode fixtures preferred (no browser needed)
 - **Real-mode tests** live in `tests/test_real_mode.py` (headless Chromium)
-- **Selector rot tests** in `tests/test_selectors.py` — update fixtures when WhatsApp DOM changes
 
 ### Commit Messages
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`
@@ -48,17 +47,16 @@ uv run orvima --demo chats  # try the offline tour
 | `src/orvima/agent.py` | Sessions, EventBus, AgentLoop (snapshot→decide→act→verify) |
 | `src/orvima/api.py` | FastAPI + SSE (live frames, transcript, controls) |
 | `src/orvima/mcp_server.py` | MCP stdio binding (v1/v2 compatible) |
-| `src/orvima/cli.py` | Typer CLI with demo/serve/mcp/run/doctor |
+| `src/orvima/cli.py` | argparse CLI with demo/serve/mcp/run/doctor |
 
 ## Adding a New Tool
 
-1. Add `browse_newtool` function in `src/orvima/tools.py`
+1. Add `tool_browse_newtool` function in `src/orvima/tools.py`
 2. Add to `TOOLS` tuple and `TOOL_NAMES` set
 3. Add `ref` support via `_resolve()` helper
 4. Add structured error with `_error()` + candidates
 5. Add test in `tests/test_orvima.py` (`test_tool_contract`)
 6. Update `src/orvima/demo.py` for parity
-7. Update `src/orvima/mcp_server.py` if mutating (add to `WRITE_TOOLS`)
 
 ## Running Tests
 
@@ -71,9 +69,6 @@ uv run pytest tests/test_orvima.py
 
 # Real-mode fixture tests (headless Chromium)
 uv run pytest tests/test_real_mode.py
-
-# Selector rot tests
-uv run pytest tests/test_selectors.py
 ```
 
 ## Code of Conduct

@@ -33,7 +33,12 @@ Local-first. Everything runs at `127.0.0.1`. Your cookies, sessions and scrapes 
 ## Quick start (30 seconds)
 
 ```bash
-pip install 'orvima[mcp]'          # or: uv tool install 'orvima[mcp]'
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh
+
 orvima demo                        # offline tour — try everything, zero setup
 ```
 
@@ -127,6 +132,8 @@ Attach to a browser you already have running (parley-style, over CDP):
 orvima --attach http://127.0.0.1:9222 mcp --mode real
 ```
 
+`--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
+
 > `--mode demo` = offline simulator (works everywhere, perfect for CI and tours)
 > `--mode real` = your own installed browser, streaming frames to the UI
 > flags: `--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
@@ -173,7 +180,7 @@ orvima --attach http://127.0.0.1:9222 mcp --mode real
 | `browse_open_tab(url)` / `browse_list_tabs()` | multi-tab research |
 | `browse_switch_tab(index)` / `browse_close_tab(index)` | move between / close tabs |
 
-Every tool returns `{"ok": true, ...}` only after the page has confirmed the result.
+Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_select`, `browse_press`, `browse_navigate`, `browse_go_back`, `browse_wait_for`, `browse_open_tab`, `browse_switch_tab`, `browse_close_tab`) returns `{"ok": true, ...}` with a `verified` flag after the page has confirmed the result. Read tools (`browse_snapshot`, `browse_screenshot`, `browse_extract`, `browse_eval`, `browse_hover`, `browse_wait`, `browse_scroll`, `browse_go_back`, `browse_list_tabs`) return `ok: true` without a `verified` field.
 
 ---
 
@@ -188,7 +195,7 @@ Every tool returns `{"ok": true, ...}` only after the page has confirmed the res
 | `src/orvima/agent.py` | sessions, the event bus, and the agent loop (snapshot → decide → act → verify) |
 | `src/orvima/api.py` | FastAPI app + SSE events (live frames, transcript, controls) |
 | `src/orvima/mcp_server.py` | MCP (stdio) binding so any AI tool can drive it |
-| `web/` | the dashboard UI (Next.js/React) — *on the way* |
+| `src/orvima/cli.py` | argparse CLI with demo/serve/mcp/run/doctor |
 
 ## Roadmap
 
@@ -197,11 +204,12 @@ Every tool returns `{"ok": true, ...}` only after the page has confirmed the res
 - [x] Adaptive step-planner (snapshot → decide → act) with LLM / local-Ollama / MCP brains
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
-- [x] HTTP API + live SSE stream (frames + transcript + pause/resume)
+- [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
 - [x] CI + test suite (demo-mode tests, no browser needed)
+- [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Dashboard UI (watch the agent live, approve actions)
-- [ ] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Media + downloads
+- [ ] Cross-platform browser detection (macOS/Linux Chrome/Edge paths)
 
 ## Security
 
@@ -213,8 +221,8 @@ Orvima is **loopback-only by default** and stores nothing of yours remotely. It 
 |------|--------|-------|
 | CAPTCHAs / 2FA | ❌ Not supported | Human takeover (pause/resume) is the intended workflow |
 | File dialogs | ❌ Not supported | Human takeover required |
-| Iframes | ⚠️ Partial | Detected and flagged in snapshot; not traversed |
-| Shadow DOM | ⚠️ Partial | Hosts detected and flagged; not traversed |
+| Iframes | ⚠️ Partial | Detected and noted in snapshot; not traversed |
+| Shadow DOM | ⚠️ Partial | Not traversed (host detection not yet implemented) |
 | Browser updates | ⚠️ May break selectors | Fixture tests catch regressions; update fixtures when needed |
 | CAPTCHAs on login | ❌ Not solvable | Pause, solve manually, resume |
 | Media / downloads | ❌ Not supported | On roadmap |
