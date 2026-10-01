@@ -171,6 +171,7 @@ jobs:
 
       - name: Test wheel install
         run: |
-          pip install "orvima[mcp] @ ./orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
+          WHEEL_FILE="orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
+          pip install "orvima[mcp] @ file://${PWD}/${WHEEL_FILE}"
           orvima --version
           orvima doctor --help
