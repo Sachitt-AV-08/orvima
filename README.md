@@ -132,6 +132,24 @@ Attach to a browser you already have running (parley-style, over CDP):
 orvima --attach http://127.0.0.1:9222 mcp --mode real
 ```
 
+Start that browser with `--remote-debugging-port=<port>` to expose the endpoint.
+
+**Against a browser you actually use every day, add `--attach-tab`.** Chromium's
+browser-level `connect_over_cdp` enumerates and auto-attaches to *every* target
+before the handshake completes, so a profile with extension service workers,
+reCAPTCHA iframes and a dozen open tabs can stall it indefinitely — we measured
+one still hanging at 90s with no other client attached. Naming a single tab skips
+that enumeration and returns in milliseconds:
+
+```bash
+export ORVIMA_ATTACH_TAB=linkedin.com    # substring of the tab url or title
+orvima --attach http://127.0.0.1:9335 mcp --mode real
+```
+
+If the endpoint answers but the handshake still stalls, attach fails fast rather
+than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
+`ORVIMA_TYPE_DELAY_MS` (default 0) sets per-character typing delay.
+
 `--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
 
 > `--mode demo` = offline simulator (works everywhere, perfect for CI and tours)
@@ -165,7 +183,7 @@ orvima --attach http://127.0.0.1:9222 mcp --mode real
 | `browse_navigate(url)` | open a URL and wait for it to be interactive |
 | `browse_click(selector)` | click the first element matching a selector |
 | `browse_hover(selector)` | hover (reveals menus, tooltips) |
-| `browse_type(selector, text)` | type into a field, human-ish pace |
+| `browse_type(selector, text)` | type into a field character by character |
 | `browse_fill(selector, text)` | replace a field's value wholesale |
 | `browse_select(selector, value)` | pick an option in a dropdown |
 | `browse_press(key)` | press Enter / Escape / Tab / … |
@@ -189,6 +207,7 @@ Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_selec
 | piece | what |
 | --- | --- |
 | `src/orvima/browser.py` | `BrowserController` — your Chrome/Edge (persistent profile or CDP attach) with verify-first ops |
+| `src/orvima/cdp.py` | page-level CDP client — attaches to a single open tab's own socket, skipping the browser handshake that stalls on busy profiles |
 | `src/orvima/demo.py` | `DemoBrowser` — the same surface, scripted, offline, CI-friendly |
 | `src/orvima/tools.py` | the `browse_*` tools as plain dict-in/dict-out functions |
 | `src/orvima/planner.py` | adaptive step-planner: `LLMPlanner` (any OpenAI-compatible endpoint) + `DemoPlanner` |
