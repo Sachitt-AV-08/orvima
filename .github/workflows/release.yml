@@ -166,11 +166,11 @@ jobs:
       - name: Download release wheel
         run: |
           WHEEL_URL="https://github.com/Sachitt-AV-08/orvima/releases/download/${{ github.ref_name }}/orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
-          curl -L -o orvima.whl "$WHEEL_URL"
-          ls -la orvima.whl
+          curl -L -o "orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl" "$WHEEL_URL"
+          ls -la *.whl
 
       - name: Test wheel install
         run: |
-          pip install "orvima[mcp] @ ./orvima.whl"
+          pip install "orvima[mcp] @ ./orvima-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
           orvima --version
           orvima doctor --help
