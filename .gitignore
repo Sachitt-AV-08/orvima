@@ -21,3 +21,10 @@ npm-debug.log*
 .parley/
 *.log
 .DS_Store
+
+# --- browser profiles
+# Tests launch a throwaway Chromium with a persistent profile so cookie/state
+# behaviour can be exercised. That profile is regenerated per run and is ~2MB of
+# binaries and caches - it must never be committed.
+tests/.cdp-test-profile/
+*.cdp-test-profile/

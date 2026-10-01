@@ -16,13 +16,101 @@ without megabytes of HTML.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from .errors import BrowserError
 
 DEFAULT_PROFILE = str(Path.home() / ".orvima" / "profile")
+
+# Playwright's default connect_over_cdp timeout is 180s. When another CDP client
+# already owns the browser the handshake never completes, so that default turns a
+# clear mistake into a silent three-minute freeze. Fail fast and say why instead.
+DEFAULT_ATTACH_TIMEOUT_S = 10.0
+
+
+def _attach_timeout_ms() -> int:
+    """Bounded CDP attach budget, overridable with ORVIMA_ATTACH_TIMEOUT (seconds)."""
+    raw = os.environ.get("ORVIMA_ATTACH_TIMEOUT")
+    try:
+        seconds = float(raw) if raw else DEFAULT_ATTACH_TIMEOUT_S
+    except ValueError:
+        seconds = DEFAULT_ATTACH_TIMEOUT_S
+    if seconds <= 0:
+        seconds = DEFAULT_ATTACH_TIMEOUT_S
+    return int(seconds * 1000)
+
+
+def _type_delay_ms() -> int:
+    """Per-character typing delay, overridable with ORVIMA_TYPE_DELAY_MS.
+
+    Defaults to 0: an agent pays this cost on every character it sends, and
+    human-style pacing is the product layer's job (see parley's HumanPacing),
+    not the browser driver's.
+    """
+    raw = os.environ.get("ORVIMA_TYPE_DELAY_MS")
+    try:
+        ms = float(raw) if raw else 0.0
+    except ValueError:
+        ms = 0.0
+    return max(0, int(ms))
+
+
+def _cdp_endpoint_alive(attach: str) -> bool:
+    """True when something answers on the CDP HTTP endpoint."""
+    if attach.startswith(("ws://", "wss://")):
+        return True  # can't cheaply probe a websocket URL; let connect try
+    base = attach.rstrip("/")
+    url = f"{base}/json/version" if base.startswith("http") else attach
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310 - fixed loopback endpoint
+            return resp.status < 500
+    except urllib.error.HTTPError:
+        return True  # something is listening, just not on this path
+    except Exception:
+        return False
+
+
+def _cdp_page_sockets(attach: str) -> list[dict]:
+    """List the open page targets on a CDP endpoint."""
+    base = attach.rstrip("/")
+    if not base.startswith("http"):
+        return []
+    try:
+        with urllib.request.urlopen(f"{base}/json/list", timeout=3) as resp:  # noqa: S310
+            targets = json.loads(resp.read().decode())
+    except Exception:
+        return []
+    return [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+
+
+def _page_socket_for(attach: str, hint: str) -> str:
+    """Find a page target's own debugger socket.
+
+    Browser-level ``connect_over_cdp`` enumerates and auto-attaches to every
+    target before finishing its handshake, so against a real daily-driver profile
+    (extension service workers, reCAPTCHA iframes, a dozen tabs) it never
+    completes - measured past 90s with no other client attached. Connecting to a
+    single page's socket skips that entirely and returns in milliseconds.
+
+    Returns "" when no target matches, so the caller can fall back.
+    """
+    pages = _cdp_page_sockets(attach)
+    if not pages:
+        return ""
+    if hint:
+        hint_l = hint.lower()
+        for target in pages:
+            if hint_l in (target.get("url") or "").lower():
+                return target["webSocketDebuggerUrl"]
+            if hint_l in (target.get("title") or "").lower():
+                return target["webSocketDebuggerUrl"]
+        return ""
+    return pages[0]["webSocketDebuggerUrl"]
 
 _BROWSER_PATHS = {
     "chrome": (
@@ -118,6 +206,7 @@ class BrowserController:
         headless: bool | None = None,
         profile_dir: str | None = None,
         attach: str | None = None,
+        attach_tab: str | None = None,
     ):
         self._base_url = base_url
         env_headless = os.environ.get("ORVIMA_HEADLESS")
@@ -127,18 +216,55 @@ class BrowserController:
             self._headless = headless
         self._profile_dir = profile_dir or os.environ.get("ORVIMA_PROFILE", DEFAULT_PROFILE)
         self._attach = attach or os.environ.get("ORVIMA_ATTACH", "") or None
+        self._attach_tab = attach_tab or os.environ.get("ORVIMA_ATTACH_TAB", "") or ""
         self._channel = None if self._attach else detect_channel()
         self._context = None
         self.page = None
         self._pw = None
+        self._closed = False
 
     def start(self) -> None:
         from playwright.sync_api import sync_playwright
 
+        self._pw = sync_playwright().start()
         try:
-            self._pw = sync_playwright().start()
             if self._attach:
-                browser = self._pw.chromium.connect_over_cdp(self._attach)
+                if not _cdp_endpoint_alive(self._attach):
+                    raise BrowserError(
+                        f"no browser is listening at {self._attach}. Start the browser with a "
+                        f"debugging port (for example --remote-debugging-port=9334), or drop "
+                        f"--attach to let orvima launch its own browser."
+                    )
+                timeout_ms = _attach_timeout_ms()
+                page_ws = _page_socket_for(self._attach, self._attach_tab)
+                if self._attach_tab and not page_ws:
+                    open_tabs = ", ".join(
+                        f"{(t.get('title') or t.get('url') or '?')[:40]}" for t in _cdp_page_sockets(self._attach)
+                    )
+                    raise BrowserError(
+                        f"no open tab matches {self._attach_tab!r} in {self._attach}. "
+                        f"Open tabs: {open_tabs or 'none'}"
+                    )
+                try:
+                    # A page target's own socket skips browser-level target
+                    # enumeration, which is what stalls on a busy real profile.
+                    endpoint = page_ws or self._attach
+                    browser = self._pw.chromium.connect_over_cdp(endpoint, timeout=timeout_ms)
+                except Exception as exc:
+                    if page_ws:
+                        raise BrowserError(
+                            f"could not attach to the {self._attach_tab!r} tab in "
+                            f"{self._attach} within {timeout_ms // 1000}s: {exc}"
+                        ) from exc
+                    raise BrowserError(
+                        f"could not attach to {self._attach} within {timeout_ms // 1000}s. The "
+                        f"endpoint answered but the CDP browser handshake never completed. "
+                        f"Chromium's connect_over_cdp enumerates and auto-attaches to every "
+                        f"target, so a busy profile - extension service workers, reCAPTCHA "
+                        f"iframes, many open tabs - can stall it indefinitely. Pass "
+                        f"ORVIMA_ATTACH_TAB=<substring of the tab url or title> to attach to a "
+                        f"single page instead, or let orvima launch its own browser."
+                    ) from exc
                 self._context = browser.contexts[0] if browser.contexts else None
                 if self._context is None:
                     self._context = browser.new_context()
@@ -158,10 +284,32 @@ class BrowserController:
             pages = self._context.pages
             self.page = pages[0] if pages else self._context.new_page()
             self._goto(self._base_url)
+        except BrowserError:
+            self._teardown_playwright()
+            raise  # already actionable - don't bury the real cause
         except Exception as exc:  # pragma: no cover - launch failures vary
+            self._teardown_playwright()
             raise BrowserError(f"could not start a browser: {exc}") from exc
 
+    def _teardown_playwright(self) -> None:
+        """Stop the Playwright driver after a failed start.
+
+        Without this, a failed start leaks the driver process *and* its asyncio
+        loop. The next sync_playwright() start in the same process then fails
+        with the misleading "you are using Playwright Sync API inside the asyncio
+        loop" - so one failure cascades into unrelated ones.
+        """
+        if self._pw is not None:
+            try:
+                self._pw.stop()
+            except Exception:  # pragma: no cover - best effort
+                pass
+            self._pw = None
+        self._context = None
+        self.page = None
+
     def _goto(self, url: str) -> dict:
+        self._require_open()
         try:
             self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
         except Exception as exc:
@@ -172,13 +320,50 @@ class BrowserController:
         return {"url": self.page.url, "title": self.page.title()}
 
     def _dom_signature(self) -> str:
-        """Lightweight signature of DOM structure for click verification."""
+        """Signature of DOM state for click verification.
+
+        Node count alone is not evidence: it changes on any unrelated mutation
+        (ads, timers) and stays identical when a click only mutates attributes
+        or text. This includes a text digest, so clicking something that updates
+        a counter or swaps content is detected, while clicking inert elements is
+        not.
+        """
         try:
-            count = self.page.evaluate("document.querySelectorAll('*').length")
-            title = self.page.title()
-            return f"{title}|{count}"
+            parts = self.page.evaluate(
+                """() => {
+                  const body = document.body;
+                  const text = (body && body.innerText) ? body.innerText.slice(0, 20000) : "";
+                  let h = 0;
+                  for (let i = 0; i < text.length; i++) {
+                    h = (Math.imul(31, h) + text.charCodeAt(i)) | 0;
+                  }
+                  return {
+                    url: location.href,
+                    title: document.title,
+                    nodes: document.querySelectorAll('*').length,
+                    hash: h,
+                  };
+                }"""
+            )
+            return f"{parts['url']}|{parts['title']}|{parts['nodes']}|{parts['hash']}"
         except Exception:
             return ""
+
+    def _read_value(self, selector: str) -> str | None:
+        """Read a field's current value, whichever kind of element it is.
+
+        `input_value()` only works on input/textarea/select, so contenteditable
+        targets (rich editors, tiptap/ProseMirror composers) used to read back
+        as a hard failure. Returns None only if the element can't be found.
+        """
+        try:
+            return self.page.input_value(selector)
+        except Exception:
+            pass
+        try:
+            return self.page.inner_text(selector)
+        except Exception:
+            return None
 
     # ------------------------------------------------------------- actions ----
     def navigate(self, url: str) -> dict:
@@ -186,6 +371,7 @@ class BrowserController:
         return {**self._state(), "load_state": "domcontentloaded", "verified": True}
 
     def click(self, selector: str) -> dict:
+        self._require_open()
         before_sig = self._dom_signature()
         try:
             self.page.click(selector, timeout=10000)
@@ -202,31 +388,30 @@ class BrowserController:
             raise BrowserError(f"hover {selector!r} failed: {exc}") from exc
         return self._state()
 
-    def type(self, selector: str, text: str) -> dict:
+    def type(self, selector: str, text: str, delay_ms: int | None = None) -> dict:
+        self._require_open()
+        delay = _type_delay_ms() if delay_ms is None else max(0, int(delay_ms))
         try:
             self.page.click(selector, timeout=10000)
-            self.page.keyboard.type(text, delay=24)
+            self.page.keyboard.type(text, delay=delay)
         except Exception as exc:
             raise BrowserError(f"type into {selector!r} failed: {exc}") from exc
-        value = ""
-        try:
-            value = self.page.input_value(selector)
-        except Exception:
-            pass
-        verified = value == text
+        value = self._read_value(selector)
+        if value is None:
+            raise BrowserError(f"typed into {selector!r} but could not read it back to verify")
+        verified = value.strip() == text.strip()
         return {"typed": text, "value": value, "verified": verified, **self._state()}
 
     def fill(self, selector: str, text: str) -> dict:
+        self._require_open()
         try:
             self.page.fill(selector, text, timeout=10000)
         except Exception as exc:
             raise BrowserError(f"fill {selector!r} failed: {exc}") from exc
-        value = ""
-        try:
-            value = self.page.input_value(selector)
-        except Exception:
-            pass
-        verified = value == text
+        value = self._read_value(selector)
+        if value is None:
+            raise BrowserError(f"filled {selector!r} but could not read it back to verify")
+        verified = value.strip() == text.strip()
         return {"value": value, "verified": verified, **self._state()}
 
     def select(self, selector: str, value: str) -> dict:
@@ -343,10 +528,25 @@ class BrowserController:
         try:
             if self._context is not None:
                 self._context.close()
-            if getattr(self, "_pw", None) is not None:
-                self._pw.stop()
         except Exception:  # pragma: no cover
             pass
+        self._teardown_playwright()
+        self._closed = True
+
+    def _require_open(self) -> None:
+        """Fail loudly and usefully if the controller was already closed.
+
+        Without this, any action on a closed controller surfaces Playwright's
+        cryptic "Event loop is closed! Is Playwright already stopped?", which
+        reads like an internal bug rather than a lifecycle mistake.
+        """
+        if self._closed:
+            raise BrowserError(
+                "this browser controller is closed - construct a new one and call start() "
+                "(restarting on a closed controller is not supported)"
+            )
+        if self.page is None:
+            raise BrowserError("no active page - call start() first")
 
     # Context manager protocol for sync `with` statement
     def __enter__(self) -> BrowserController:

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CDP Fixture</title>
+  <style>
+    body { font-family: sans-serif; padding: 16px; }
+    #editor { border: 1px solid #999; min-height: 50px; padding: 6px; }
+    #hidden-box { display: none; }
+  </style>
+</head>
+<body>
+  <h1>CDP Fixture</h1>
+
+  <div id="editor" contenteditable="true" role="textbox" aria-label="Editor"></div>
+  <button id="btn">Go</button>
+  <div id="out">idle</div>
+  <input type="file" id="file" accept="image/*" />
+  <div id="hidden-box">invisible</div>
+  <div id="target">present</div>
+
+  <script>
+    document.getElementById('btn').addEventListener('click', function () {
+      document.getElementById('out').innerText = 'clicked';
+    });
+  </script>
+</body>
+</html>

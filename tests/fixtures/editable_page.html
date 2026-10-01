@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Editable Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .editor { border: 1px solid #ccc; min-height: 60px; padding: 8px; }
+    #cleared { width: 240px; padding: 6px; }
+    #counter { margin-top: 10px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Editable Page</h1>
+
+  <!-- contenteditable target: input_value() cannot read this -->
+  <div id="rich" class="editor" contenteditable="true" role="textbox" aria-label="Rich editor"></div>
+
+  <!-- a plain input for the normal path -->
+  <input id="plain" type="text" aria-label="Plain input" />
+
+  <!-- an input whose handler clears the value on input events -->
+  <input id="cleared" type="text" aria-label="Cleared input" />
+
+  <!-- a button whose only effect is mutating text elsewhere in the DOM
+       (node count stays identical - the case node-count verification missed) -->
+  <button id="touched" aria-label="Touched button">Touch me</button>
+  <div id="counter">clicks: 0</div>
+
+  <script>
+    document.getElementById('cleared').addEventListener('input', function () {
+      this.value = '';
+    });
+    let clicks = 0;
+    document.getElementById('touched').addEventListener('click', function () {
+      clicks += 1;
+      document.getElementById('counter').innerText = 'clicks: ' + clicks;
+    });
+  </script>
+</body>
+</html>
