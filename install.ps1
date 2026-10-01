@@ -45,7 +45,6 @@ function Get-WheelUrl($tag) {
         $wheel = $resp.assets | Where-Object { $_.name -like "*.whl" } | Select-Object -First 1
         if ($wheel) { return $wheel.browser_download_url }
     } catch { }
-    # Fallback: construct expected URL
     $version = $tag.TrimStart('v')
     return "https://github.com/Sachitt-AV-08/orvima/releases/download/$tag/orvima-$version-py3-none-any.whl"
 }
@@ -56,45 +55,39 @@ Write-Color "║   The browser your AI drives             ║" $Cyan
 Write-Color "╚══════════════════════════════════════════╝" $Cyan
 Write-Host ""
 
-# Get version
 if ($Version -eq "latest") {
     Write-Color "Fetching latest release..." $Yellow
     $Version = Get-LatestRelease
 }
 Write-Color "Target version: $Version" $Cyan
 
-# Detect installer
 $hasUv    = (Get-Command uv -ErrorAction SilentlyContinue) -ne $null
 $hasPipx  = (Get-Command pipx -ErrorAction SilentlyContinue) -ne $null
 $hasPip   = (Get-Command pip -ErrorAction SilentlyContinue) -ne $null
 
 if ($hasUv) {
     Write-Color "Found uv - using uv tool install" $Green
-    $installCmd = "uv tool install"
-    if ($NoMcp) { $installCmd += " 'orvima'" } else { $installCmd += " 'orvima[mcp]'" }
-    if ($Version -ne "latest") { $installCmd += "@$Version" }
-    Write-Color "Running: $installCmd" $Cyan
-    & $installCmd
+    if ($NoMcp) {
+        & uv tool install "orvima @ git+https://github.com/Sachitt-AV-08/orvima.git@$Version"
+    } else {
+        & uv tool install "orvima[mcp] @ git+https://github.com/Sachitt-AV-08/orvima.git@$Version"
+    }
 } elseif ($hasPipx) {
     Write-Color "Found pipx - using pipx install" $Green
-    $installCmd = "pipx install"
-    if ($NoMcp) { $installCmd += " orvima" } else { $installCmd += " 'orvima[mcp]'" }
-    if ($Version -ne "latest") { $installCmd += "==$($Version.TrimStart('v'))" }
-    Write-Color "Running: $installCmd" $Cyan
-    & $installCmd
+    if ($NoMcp) {
+        & pipx install "orvima @ git+https://github.com/Sachitt-AV-08/orvima.git@$Version"
+    } else {
+        & pipx install "orvima[mcp] @ git+https://github.com/Sachitt-AV-08/orvima.git@$Version"
+    }
 } elseif ($hasPip) {
     Write-Color "Found pip - using pip install" $Green
     $wheelUrl = Get-WheelUrl $Version
     Write-Color "Downloading wheel: $wheelUrl" $Cyan
-    $installCmd = "pip install"
-    if (-not $NoMcp) { $installCmd += " 'orvima[mcp]'" } else { $installCmd += " orvima" }
-    if ($Version -eq "latest") {
-        $installCmd += " --index-url https://github.com/Sachitt-AV-08/orvima/releases/download/latest/"
+    if (-not $NoMcp) {
+        & pip install "orvima[mcp] @ $wheelUrl"
     } else {
-        $installCmd += " $wheelUrl"
+        & pip install "orvima @ $wheelUrl"
     }
-    Write-Color "Running: $installCmd" $Cyan
-    & $installCmd
 } else {
     Write-Color "No installer found (uv/pipx/pip). Please install Python first." $Red
     exit 1

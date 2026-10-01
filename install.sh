@@ -11,18 +11,22 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-VERSION="${1:-latest}"
+# Parse flags FIRST
 FORCE=false
 NO_MCP=false
+POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --force) FORCE=true; shift ;;
         --no-mcp) NO_MCP=true; shift ;;
         -*) echo "Unknown option: $1"; exit 1 ;;
-        *) VERSION="$1"; shift ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+# Now get version from positional args or default
+VERSION="${POSITIONAL[0]:-latest}"
 
 echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║     Orvima Installer                     ║${NC}"
@@ -33,7 +37,7 @@ echo ""
 # Get latest version if not specified
 if [[ "$VERSION" == "latest" ]]; then
     echo -e "${YELLOW}Fetching latest release...${NC}"
-    VERSION=$(curl -s https://api.github.com/repos/Sachitt-AV-08/orvima/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    VERSION=$(curl -s https://api.github.com/repos/Sachitt-AV-08/orvima/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/') || true
     if [[ -z "$VERSION" ]]; then
         echo -e "${RED}Failed to fetch latest release, using v0.1.0${NC}"
         VERSION="v0.1.0"
@@ -47,30 +51,28 @@ echo ""
 if command -v uv &> /dev/null; then
     echo -e "${GREEN}Found uv - using uv tool install${NC}"
     if [[ "$NO_MCP" == true ]]; then
-        uv tool install "orvima@${VERSION}"
+        uv tool install "orvima @ git+https://github.com/Sachitt-AV-08/orvima.git@${VERSION}"
     else
-        uv tool install "orvima[mcp]@${VERSION}"
+        uv tool install "orvima[mcp] @ git+https://github.com/Sachitt-AV-08/orvima.git@${VERSION}"
     fi
 elif command -v pipx &> /dev/null; then
     echo -e "${GREEN}Found pipx - using pipx install${NC}"
     if [[ "$NO_MCP" == true ]]; then
-        pipx install "orvima==${VERSION#v}"
+        pipx install "orvima @ git+https://github.com/Sachitt-AV-08/orvima.git@${VERSION}"
     else
-        pipx install "orvima[mcp]==${VERSION#v}"
+        pipx install "orvima[mcp] @ git+https://github.com/Sachitt-AV-08/orvima.git@${VERSION}"
     fi
 elif command -v pip &> /dev/null; then
     echo -e "${GREEN}Found pip - using pip install${NC}"
     if [[ "$VERSION" == "latest" ]]; then
-        # This won't work without a proper index; we'll fall back to git
         echo -e "${YELLOW}Using git install for latest...${NC}"
         pip install "orvima[mcp]@git+https://github.com/Sachitt-AV-08/orvima.git"
     else
-        # Try to get wheel from release
         WHEEL_URL="https://github.com/Sachitt-AV-08/orvima/releases/download/${VERSION}/orvima-${VERSION#v}-py3-none-any.whl"
         if [[ "$NO_MCP" == true ]]; then
             pip install "$WHEEL_URL"
         else
-            pip install "$WHEEL_URL[mcp]"
+            pip install "orvima[mcp] @ $WHEEL_URL"
         fi
     fi
 else
