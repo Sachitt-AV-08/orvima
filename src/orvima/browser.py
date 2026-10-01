@@ -25,6 +25,11 @@ import urllib.request
 from pathlib import Path
 
 from .errors import BrowserError
+from .expectations import (
+    DEFAULT_EXPECT_TIMEOUT_MS,
+    ExpectationChecker,
+    ExpectationSet,
+)
 from .identity import ElementIdentity, RefRegistry
 
 DEFAULT_PROFILE = str(Path.home() / ".orvima" / "profile")
@@ -691,6 +696,60 @@ class BrowserController:
         except Exception:
             return ""
 
+    # ------------------------------------------------------ expectations ----
+    def _check_expectations(self, expect: dict, selector: str | None) -> dict:
+        """Judge an action against what the caller said it expected.
+
+        Returns a dict to merge into the tool result. It is **empty** when the
+        caller stated no expectation, not a passing report: adding keys
+        (``expectationsMet`` and friends) to every result would make a feature
+        nobody asked for part of the contract every caller has to read.
+
+        An unmet expectation raises. The caller asked for a specific outcome;
+        getting something else means the action did not do what was intended,
+        and a flag that a caller may ignore is how verification becomes theatre.
+        """
+        wanted = ExpectationSet(
+            url=expect.get("expect_url"),
+            text=expect.get("expect_text"),
+            count=expect.get("expect_count"),
+            count_target=expect.get("expect_for"),
+            timeout_ms=expect.get("expect_timeout_ms", DEFAULT_EXPECT_TIMEOUT_MS),
+        )
+        if not wanted.any_given():
+            return {}
+
+        report = ExpectationChecker(self._read_page_state, self._count_matching).check(
+            wanted, selector
+        )
+        if not report.passed:
+            raise BrowserError(
+                f"the action completed but {report.failure_message()}. "
+                "The page may have gone somewhere other than intended - check "
+                "where you actually are before continuing"
+            )
+        return report.summary()
+
+    def _read_page_state(self) -> dict:
+        """Url and visible text, for expectation polling."""
+        try:
+            text = self.page.evaluate(
+                "() => { const b = document.body;"
+                " return b ? (b.innerText || '').slice(0, 20000) : ''; }"
+            )
+        except Exception:
+            text = ""
+        return {"url": self.page.url, "text": text}
+
+    def _count_matching(self, selector: str | None) -> int | None:
+        """How many elements a selector matches, or None if it cannot be read."""
+        if not selector:
+            return None
+        try:
+            return self.page.locator(selector).count()
+        except Exception:
+            return None
+
     def _read_value(self, selector: str, target=None) -> str | None:
         """Read a field's current value, whichever kind of element it is.
 
@@ -712,11 +771,17 @@ class BrowserController:
             return None
 
     # ------------------------------------------------------------- actions ----
-    def navigate(self, url: str) -> dict:
+    def navigate(self, url: str, **expect) -> dict:
         self._goto(url)
-        return {**self._state(), "load_state": "domcontentloaded", "verified": True}
+        report = self._check_expectations(expect, None)
+        return {
+            **self._state(),
+            "load_state": "domcontentloaded",
+            "verified": True,
+            **report,
+        }
 
-    def click(self, selector: str) -> dict:
+    def click(self, selector: str, **expect) -> dict:
         self._require_open()
         selector = self._guard_ref(selector)
         target = self._target(selector)
@@ -728,7 +793,11 @@ class BrowserController:
             raise BrowserError(f"click {selector!r} failed: {exc}") from exc
         after_sig = self._dom_signature()
         verified = before_sig != after_sig
-        return {**self._state(), "verified": verified}
+        # Expectations are judged against the acted-on selector, before the
+        # ref-to-selector rewrite, so expect_count counts what the caller aimed
+        # at rather than an attribute selector.
+        report = self._check_expectations(expect, selector)
+        return {**self._state(), "verified": verified, **report}
 
     def hover(self, selector: str) -> dict:
         selector = self._guard_ref(selector)

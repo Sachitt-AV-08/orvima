@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from .errors import BrowserError
+from .expectations import DEFAULT_EXPECT_TIMEOUT_MS
 
 REF_RE = re.compile(r"^(?:f\d+:)?e\d+$")
 
@@ -44,6 +45,28 @@ def _candidates(browser):
         return []
 
 
+#: The keys an action accepts as an expectation, in the order they are passed.
+_EXPECT_KEYS = ("expect_url", "expect_text", "expect_count", "expect_timeout_ms")
+
+
+def _expect_kwargs(**given) -> dict:
+    """Only the expectations the caller actually stated.
+
+    Passing the rest as None would change the call for every caller that uses no
+    expectations, and would break any browser implementation that has not adopted
+    them - including DemoBrowser, which is a shipped class rather than a test
+    double. "No expectation given" must mean "behave exactly as before", so an
+    absent expectation is not forwarded at all.
+    """
+    out = {k: v for k, v in given.items() if v is not None}
+    # A timeout or a count target on their own is meaningless, and forwarding
+    # either alone would make an implementation that does not know the option
+    # fail for no stated reason.
+    if not any(k in out for k in ("expect_url", "expect_text", "expect_count")):
+        return {}
+    return out
+
+
 def _error(exc, candidates=None):
     """Build a structured error dict with optional recovery candidates."""
     msg = str(exc)
@@ -54,23 +77,74 @@ def _error(exc, candidates=None):
     return err
 
 
-def tool_browse_navigate(browser, url: str) -> dict:
-    """Open a URL. Waits for the page to be interactive and returns URL + title."""
+def tool_browse_navigate(
+    browser,
+    url: str,
+    expect_url: str | None = None,
+    expect_text: str | None = None,
+) -> dict:
+    """Open a URL. Waits for the page to be interactive and returns URL + title.
+
+    Optional ``expect_url`` / ``expect_text`` state what the page should look like
+    once it has loaded. If one is given and does not come true within
+    ``expect_timeout_ms``, the call fails with the mismatch rather than reporting
+    a successful navigation - which is how a redirect to a login page or the
+    wrong account goes unnoticed. Omit them for today's behaviour.
+    """
     try:
-        return {"ok": True, **browser.navigate(url)}
+        return {
+            "ok": True,
+            **browser.navigate(
+                url, **_expect_kwargs(expect_url=expect_url, expect_text=expect_text)
+            ),
+        }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_browse_click(browser, selector: str | None = None, ref: str | None = None) -> dict:
+def tool_browse_click(
+    browser,
+    selector: str | None = None,
+    ref: str | None = None,
+    expect_url: str | None = None,
+    expect_text: str | None = None,
+    expect_count: int | None = None,
+    expect_for: str | None = None,
+    expect_timeout_ms: int = DEFAULT_EXPECT_TIMEOUT_MS,
+) -> dict:
     """Click an element by CSS selector OR stable ref (e.g. 'e12' from snapshot).
 
     Prefer refs — they survive DOM churn. Returns ``verified: true`` if the
     click caused a navigation or DOM mutation; otherwise ``verified: false``.
+
+    That check only asks whether *something* changed, which a click on the wrong
+    element can pass. To judge the click against intent instead, state what you
+    expected:
+
+    - ``expect_url`` - a substring the resulting url must contain
+    - ``expect_text`` - a substring the resulting page must show
+    - ``expect_count`` - the exact number of matching elements afterwards, and
+      ``expect_for`` a selector to count (default: the element you clicked)
+
+    All optional and all polled for up to ``expect_timeout_ms``, since the
+    result of a click is often asynchronous. If any expectation is unmet the
+    call fails and names every mismatch, rather than reporting success.
     """
     try:
         sel = _resolve(browser, ref, selector)
-        return {"ok": True, **browser.click(sel)}
+        return {
+            "ok": True,
+            **browser.click(
+                sel,
+                **_expect_kwargs(
+                    expect_url=expect_url,
+                    expect_text=expect_text,
+                    expect_count=expect_count,
+                    expect_for=expect_for,
+                    expect_timeout_ms=expect_timeout_ms,
+                )
+            ),
+        }
     except Exception as exc:
         return _error(exc, _candidates(browser))
 

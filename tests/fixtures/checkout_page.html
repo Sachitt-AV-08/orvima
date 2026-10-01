@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  A page that navigates somewhere unhelpful when you click the wrong-looking
+  button, so intent-level verification has something real to catch.
+
+  Two exits, and the point of the fixture is that they are indistinguishable
+  from the click's point of view:
+
+  - #good  -> nav_target.html, which shows "Order confirmed"
+  - #wrong -> trap.html, which is a completely different page. The click
+              succeeds, the DOM changes, the url changes. Only what the page
+              *is* reveals that the wrong thing happened.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>checkout</title>
+  <style>body { font-family: system-ui; padding: 1rem; } button { font: inherit; padding: 6px 12px; }</style>
+</head>
+<body>
+  <h1>Checkout</h1>
+  <p id="status">Ready to pay.</p>
+  <button id="good">Pay now</button>
+  <button id="wrong">Pay now (beta)</button>
+  <p id="result-count"></p>
+
+  <ul id="results">
+    <li class="result">alpha</li>
+    <li class="result">beta</li>
+    <li class="result">gamma</li>
+  </ul>
+  <button id="filter">Show only alpha</button>
+
+  <script>
+    window.__log = [];
+    document.getElementById("good").addEventListener("click", () => {
+      window.__log.push("good");
+      location.href = "nav_target.html";
+    });
+    document.getElementById("wrong").addEventListener("click", () => {
+      window.__log.push("wrong");
+      location.href = "trap.html";
+    });
+    document.getElementById("filter").addEventListener("click", () => {
+      window.__log.push("filter");
+      const items = Array.from(document.querySelectorAll(".result"));
+      items.forEach((li) => {
+        li.hidden = li.textContent !== "alpha";
+      });
+      document.getElementById("result-count").textContent =
+        "showing " + items.filter((li) => !li.hidden).length + " of " + items.length;
+    });
+  </script>
+</body>
+</html>
