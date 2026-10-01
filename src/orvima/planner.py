@@ -15,6 +15,7 @@ import re
 
 from . import tools
 from .agent import _redact_sensitive
+from .context import render_transcript
 
 MAX_SNAPSHOT_ITEMS = 40
 MAX_SNAPSHOT_BODY = 1200
@@ -146,30 +147,52 @@ class LLMPlanner(Planner):
 
     @staticmethod
     def _render(history: list[dict]) -> tuple[str, str]:
-        lines: list[str] = []
+        """Render history into a bounded transcript, plus the current page.
+
+        The transcript goes through :mod:`orvima.context` so a long run has a
+        bounded prompt instead of one that grows until something upstream
+        truncates it silently. Redaction is applied there.
+
+        The snapshot lookup used to test ``row["tool"] == "snapshot"``. No such
+        tool exists - it is ``browse_snapshot`` - so ``last_snapshot`` was always
+        empty and the ``if last_snapshot:`` guard below meant the planner was
+        **never sent the current page at all**. It re-planned from the goal and
+        its own history, blind. Nothing caught it: the only test touching this
+        module called ``_parse``, and every end-to-end test uses a scripted
+        planner that does not render anything.
+
+        Matched on the result's shape as well as its name, so a renamed tool
+        cannot silently disable this again.
+        """
         last_snapshot = ""
-        for row in history:
-            kind = row.get("kind")
-            if kind == "tool":
-                args = _redact_sensitive(row.get("args") or {})
-                lines.append(f"step {row.get('step')}: {row.get('tool')}({args})")
-                result = row.get("result") or {}
-                compact = {k: v for k, v in result.items() if k not in ("png_b64",)}
-                compact = _redact_sensitive(compact)
-                lines.append(f"  -> ok={result.get('ok')} {compact}")
-                if row.get("tool") == "snapshot" and result.get("ok"):
-                    last_snapshot = LLMPlanner._snapshot_text(result)
-            elif kind == "error":
-                lines.append(f"error: {row.get('error')}")
-        return "\n".join(lines), last_snapshot
+        for row in reversed(history or []):
+            if row.get("kind") != "tool":
+                continue
+            result = row.get("result") or {}
+            if (
+                result.get("ok")
+                and row.get("tool") in {"snapshot", "browse_snapshot"}
+                and result.get("items") is not None
+            ):
+                # Redacted before rendering, like every other page content that
+                # leaves the process.
+                last_snapshot = LLMPlanner._snapshot_text(_redact_sensitive(result))
+                break
+        return render_transcript(history, redact=_redact_sensitive), last_snapshot
 
     @staticmethod
     def _snapshot_text(result: dict) -> str:
+        """The current page, in the shape a planner can act on.
+
+        Bounded on purpose: items are capped at MAX_SNAPSHOT_ITEMS and body text
+        at MAX_SNAPSHOT_BODY. A long page must not be able to crowd out the
+        goal and the recent history.
+        """
         items = result.get("items") or []
         body = result.get("body") or ""
         parts = [f"  URL: {result.get('url', '')}", f"  Title: {result.get('title', '')}"]
         if items:
-            parts.append("  Elements: " + " | ".join(items[:MAX_SNAPSHOT_ITEMS]))
+            parts.append("  Elements: " + " | ".join(str(i) for i in items[:MAX_SNAPSHOT_ITEMS]))
         if body:
             parts.append("  Text: " + body[:MAX_SNAPSHOT_BODY])
         return "\n".join(parts)
