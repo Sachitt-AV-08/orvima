@@ -1,0 +1,30 @@
+Every AI tool wants a browser.
+
+Almost all of them want it the wrong way.
+
+The usual deal: hand your cookies to a cloud, pay per task, upload your live session to someone else's server, and trust nobody reads it. That is the standard price of "let the agent use the web."
+
+I wanted the opposite, so I built Orvima.
+
+Orvima gives any MCP-capable AI — Claude, Cursor, Copilot, your own agent — eyes and hands on your OWN Chrome or Edge. Your logins. Your machine. Your watch. Nothing leaves 127.0.0.1.
+
+Three things I actually cared about:
+
+→ Live viewport. You see exactly what the agent sees, streaming in real time. Not a spinner and a log line.
+
+→ Human in the loop. Pause, resume, or approve any action before it commits.
+
+→ Verified steps. Every action confirms the DOM result before the agent moves on. No silent failures, no guessed success.
+
+Start with zero setup: `orvima demo` runs the entire agent loop against a built-in simulator — no browser, no keys, no account, nothing. Then install it with one line, point your MCP client at it, and it drives your real browser. No cloud. No API key. No signup.
+
+And the part I wanted to prove: this post was composed and published by Orvima itself, driving my logged-in browser from the command line. One script, one terminal, a click sequence it made itself.
+
+If Claude can see your screen, you already have this.
+If Claude can use your accounts, that is a much bigger deal — and it should be your accounts, on your machine, where you can watch it happen.
+
+MIT licensed → github.com/Sachitt-AV-08/orvima
+
+If it breaks on your site, tell me. That is the most useful bug report I can get.
+
+#opensource #AI #MCP #browserautomation #localfirst
