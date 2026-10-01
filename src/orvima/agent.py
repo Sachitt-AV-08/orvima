@@ -52,6 +52,90 @@ class EventBus:
                 q.append(event)
 
 
+#: Words that mark a key as holding a secret. Matched against *whole tokens* of
+#: the key name, never as substrings.
+#:
+#: The previous implementation used ``any(s in key for s in sensitive_keys)``,
+#: which is wrong in both directions at once. It destroyed ordinary page content
+#: - ``author``, ``keyword``, ``keynote``, ``monkey``, ``authorship`` all contain
+#: "auth" or "key" - so a planner reading a blog post saw the author replaced by
+#: ***REDACTED***. And it missed ``bearer``, a real credential name, because no
+#: entry was "bearer".
+#:
+#: Whole-token matching gets both right: ``author`` is one token and is not the
+#: word "auth"; ``accessToken`` is two and one of them is "token".
+_SENSITIVE_WORDS = frozenset(
+    {
+        # credentials
+        "password",
+        "passwd",
+        "pwd",
+        "passphrase",
+        "secret",
+        "credential",
+        "credentials",
+        "auth",
+        "authorization",
+        "bearer",
+        "token",
+        "key",
+        "apikey",
+        "privatekey",
+        "accesskey",
+        "secretkey",
+        "sessionid",
+        "session",
+        "cookie",
+        # payment and identity
+        "card",
+        "creditcard",
+        "cardnumber",
+        "cvv",
+        "cvc",
+        "pin",
+        "otp",
+        "mfa",
+        "ssn",
+        "seed",
+        "mnemonic",
+        # anti-CSRF
+        "csrf",
+        "xsrf",
+    }
+)
+
+#: A number or a boolean under a sensitive-sounding key is a count or a flag, not
+#: a credential. ``token_count: 42`` is information; redacting it destroys it for
+#: no security benefit. Real secrets are strings.
+_NEVER_A_SECRET = (bool, int, float)
+
+
+def _key_tokens(key: str) -> list[str]:
+    """Split a key into lowercased words.
+
+    Separators (``_``, ``-``, ``.``, spaces) and camelCase boundaries both count,
+    so ``api_key``, ``apiKey`` and ``x-api-key`` all yield the token "key".
+    """
+    tokens: list[str] = []
+    for chunk in re.split(r"[^A-Za-z0-9]+", str(key)):
+        if not chunk:
+            continue
+        tokens.extend(
+            m.group(0).lower()
+            for m in re.finditer(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+", chunk)
+        )
+    return tokens
+
+
+def _is_sensitive_key(key: str, value) -> bool:
+    """Whether this field holds a secret."""
+    if not any(token in _SENSITIVE_WORDS for token in _key_tokens(key)):
+        return False
+    # A count, a flag or a measurement is not a credential, even under a name
+    # that sounds like one.
+    return not isinstance(value, _NEVER_A_SECRET)
+
+
 def _redact_sensitive(data: dict) -> dict:
     """Redact password fields, API keys, and other secrets from data structures.
 
@@ -61,23 +145,8 @@ def _redact_sensitive(data: dict) -> dict:
     if not isinstance(data, dict):
         return data
     redacted = {}
-    sensitive_keys = {
-        "password",
-        "passwd",
-        "secret",
-        "token",
-        "api_key",
-        "apikey",
-        "auth",
-        "authorization",
-        "key",
-        "credit_card",
-        "ssn",
-        "cvv",
-    }
     for k, v in data.items():
-        kl = k.lower()
-        if any(s in kl for s in sensitive_keys):
+        if _is_sensitive_key(k, v):
             redacted[k] = "***REDACTED***"
         elif isinstance(v, dict):
             redacted[k] = _redact_sensitive(v)
@@ -168,6 +237,7 @@ class AgentLoop:
         planner=None,
         max_steps: int = 20,
         max_attempts: int | None = None,
+        gate=None,
     ):
         """Run a goal under a step budget and a separate attempt budget.
 
@@ -176,6 +246,10 @@ class AgentLoop:
         retries included. They are separate on purpose - without the split, a
         retry loop spends the step budget and the run ends looking like it made
         progress when it only re-tried the same thing.
+
+        ``gate`` is an optional Sentinel gate (see :mod:`orvima.sentinel_gate`).
+        With one, each step is classified and only the actions that warrant it
+        wait for a human; without one, every step waits, exactly as before.
         """
         from .planner import planner_for
 
@@ -187,6 +261,10 @@ class AgentLoop:
         self.attempts = 0
         self.history: list[dict] = []
         self.planner = planner or planner_for(session.mode)
+        self.gate = gate
+        #: approval verdicts handed back by the API, keyed by request id
+        self._approvals: dict[str, bool] = {}
+        self._lock = threading.Lock()
 
     def run(self, goal: str) -> dict:
         sess = self.session
@@ -214,6 +292,23 @@ class AgentLoop:
 
                 name = decision["tool"]
                 args = decision.get("args", {})
+
+                if not self._authorise(step, name, args):
+                    # The gate asked a human and the answer was no. Not an
+                    # error: the run ends cleanly, because "I will not do that"
+                    # is a complete answer to "do this task".
+                    sess.status = "denied"
+                    sess.bus.emit({"type": "status", "status": sess.status})
+                    sess.log("denied", step=step, tool=name, reason="approval refused")
+                    return {
+                        "ok": False,
+                        "denied": True,
+                        "steps": step,
+                        "attempts": self.attempts,
+                        "goal": goal,
+                        "summary": f"stopped at step {step}: {name} was not approved",
+                    }
+
                 result = self._attempt(step, name, args)
 
                 if result.get("ok") is not True:
@@ -244,6 +339,76 @@ class AgentLoop:
             sess.bus.emit({"type": "status", "status": "error"})
             sess.log("error", error=str(exc))
             return {"ok": False, "error": str(exc)}
+
+    def _authorise(self, step: int, name: str, args: dict) -> bool:
+        """Consult the gate. True = run it, False = a human said no.
+
+        With no gate this is always True, which preserves the original behaviour
+        where the pause event at the top of the loop is the only gate.
+
+        When the gate asks for approval, the run blocks here until the API posts
+        a verdict via :meth:`resolve_approval`. There is no timeout on purpose:
+        this is a purchase decision, and answering it in thirty seconds by reflex
+        is worse than waiting. The API can cancel the run to unblock.
+        """
+        if self.gate is None:
+            return True
+
+        sess = self.session
+        result = self.gate.check(name, args)
+        sess.log("gate", step=step, tool=name, **result.as_log())
+        sess.bus.emit({"type": "gate", "step": step, "tool": name, **result.as_log()})
+        if result.allowed:
+            return True
+
+        request_id = self.gate.request_approval(
+            sess.id, name, args, result, self._safe_snapshot()
+        )
+        sess.status = "awaiting_approval"
+        sess.bus.emit(
+            {
+                "type": "approval_required",
+                "request_id": request_id,
+                "step": step,
+                "tool": name,
+                "args": args,
+                "risk": result.risk,
+                "reason": result.reason,
+            }
+        )
+        sess.log("approval_requested", step=step, tool=name, request_id=request_id)
+
+        while True:
+            with self._lock:
+                if request_id in self._approvals:
+                    approved = self._approvals.pop(request_id)
+                    break
+            if sess.status == "cancelled":
+                sess.log("approval_abandoned", step=step, request_id=request_id)
+                return False
+            time.sleep(0.05)
+
+        sess.status = "running"
+        sess.bus.emit({"type": "status", "status": sess.status})
+        sess.log("approval_resolved", step=step, request_id=request_id, approved=approved)
+        return approved
+
+    def resolve_approval(self, request_id: str, approved: bool) -> bool:
+        """Hand a verdict back to a blocked run. True if it was waiting."""
+        with self._lock:
+            if request_id not in self._approvals:
+                # Record it anyway: the run may not have reached the wait yet.
+                self._approvals[request_id] = approved
+            return True
+
+    def _safe_snapshot(self) -> dict | None:
+        """Snapshot for the approval dialog, tolerating a page that is gone."""
+        if self.gate is None:
+            return None
+        try:
+            return self.session.browser.snapshot()
+        except Exception:
+            return None
 
     def _attempt(self, step: int, name: str, args: dict) -> dict:
         """Run one tool once, honouring the attempt budget.
