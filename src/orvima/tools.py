@@ -11,13 +11,14 @@ import re
 
 from .errors import BrowserError
 
-REF_RE = re.compile(r"^e\d+$")
+REF_RE = re.compile(r"^(?:f\d+:)?e\d+$")
 
 
 def _resolve(browser, ref: str | None, selector: str | None) -> str:
     """Resolve a ref or selector to a CSS selector the browser understands.
 
-    - If ``ref`` is given, it must match ``e<number>`` and is converted to
+    - If ``ref`` is given, it must match ``e<number>`` on the main document, or
+      ``f<frame>:e<number>`` inside a frame, and is converted to
       ``[data-orvima-ref="eN"]`` which works on the real browser and is
       intercepted by DemoBrowser for scripted navigation.
     - If only ``selector`` is given, it is passed through unchanged.
