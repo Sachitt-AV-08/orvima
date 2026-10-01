@@ -12,7 +12,7 @@ every action is confirmed in the DOM before it is called done.
     orvima run "summarize the top 3 HN stories"   # headless agent
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from .errors import BrowserError, OrvimaError, SessionNotFoundError  # noqa: F401
 
