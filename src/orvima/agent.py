@@ -238,6 +238,7 @@ class AgentLoop:
         max_steps: int = 20,
         max_attempts: int | None = None,
         gate=None,
+        approval_timeout: float = 300.0,
     ):
         """Run a goal under a step budget and a separate attempt budget.
 
@@ -265,6 +266,8 @@ class AgentLoop:
         #: approval verdicts handed back by the API, keyed by request id
         self._approvals: dict[str, bool] = {}
         self._lock = threading.Lock()
+        #: how long a run waits for a human before giving up on the step
+        self.approval_timeout = approval_timeout
 
     def run(self, goal: str) -> dict:
         sess = self.session
@@ -274,7 +277,10 @@ class AgentLoop:
         sess.log("goal", goal=goal)
         try:
             for step in range(1, self.max_steps + 1):
-                sess._paused.wait()  # human pause/approve gate
+                # Operator pause control, not an approval gate: _paused starts
+                # signalled, so this returns immediately unless somebody pauses
+                # the run. Authorisation is _authorise's job, below.
+                sess._paused.wait()
                 decision = self.planner.decide(goal, self.history)
                 if decision.get("done"):
                     summary = decision.get("summary", "done")
@@ -343,8 +349,25 @@ class AgentLoop:
     def _authorise(self, step: int, name: str, args: dict) -> bool:
         """Consult the gate. True = run it, False = a human said no.
 
-        With no gate this is always True, which preserves the original behaviour
-        where the pause event at the top of the loop is the only gate.
+        **No gate means fully unattended.** Every action runs without being
+        judged. That is deliberate: ``bench.py`` and ``cli.py`` construct a loop
+        with no gate and expect an autonomous run, and refusing there would break
+        both.
+
+        It used to be documented here as "the original behaviour where the pause
+        event at the top of the loop is the only gate". That was false, and
+        falsely reassuring in the worst way, because it described a safety net
+        that does not exist. ``Session.__post_init__`` calls
+        ``self._paused.set()``, so ``_paused.wait()`` returns immediately on
+        every step - it is an operator pause control for a live run, not an
+        approval gate.
+
+        The consequence is that anything which *should* have a gate but ends up
+        without one is running with no protection whatsoever. So the paths that
+        supply a gate must never quietly yield ``None``: ``api.get_gate``
+        returns a gate that refuses everything when the real one cannot be
+        built, and only the explicit ``ORVIMA_SENTINEL=off`` disables gating -
+        which is reported through ``api.gate_status`` instead of being silent.
 
         When the gate asks for approval, the run blocks here until the API posts
         a verdict via :meth:`resolve_approval`. There is no timeout on purpose:
@@ -355,7 +378,7 @@ class AgentLoop:
             return True
 
         sess = self.session
-        result = self.gate.check(name, args)
+        result = self.gate.check(name, args, session_id=sess.id)
         sess.log("gate", step=step, tool=name, **result.as_log())
         sess.bus.emit({"type": "gate", "step": step, "tool": name, **result.as_log()})
         if result.allowed:
@@ -378,20 +401,70 @@ class AgentLoop:
         )
         sess.log("approval_requested", step=step, tool=name, request_id=request_id)
 
+        # Bounded wait. The loop previously ran until a verdict arrived or the
+        # session was explicitly cancelled, which meant a session deleted out
+        # from under it - `store.delete()` never sets `cancelled` - left this
+        # thread spinning at 20 Hz for the life of the process. A run that is
+        # nobody's business any more should stop being anybody's business.
+        deadline = time.monotonic() + self.approval_timeout
         while True:
             with self._lock:
                 if request_id in self._approvals:
                     approved = self._approvals.pop(request_id)
                     break
-            if sess.status == "cancelled":
-                sess.log("approval_abandoned", step=step, request_id=request_id)
+            if sess.status in ("cancelled", "error", "done"):
+                sess.log("approval_abandoned", step=step, request_id=request_id, why=sess.status)
+                return False
+            if self.gate is not None:
+                # Leaving the queue is not itself a signal: `resolve()` pops the
+                # request before this loop wakes, so an answered request looks
+                # identical to an expired one from here. The gate records which
+                # it was.
+                if self.gate.lapsed(request_id):
+                    sess.log("approval_expired", step=step, request_id=request_id)
+                    return False
+                if not any(r.id == request_id for r in self.gate.pending(sess.id)):
+                    with self._lock:
+                        answered = request_id in self._approvals
+                    if not answered:
+                        sess.log("approval_dropped", step=step, request_id=request_id)
+                        return False
+            if time.monotonic() > deadline:
+                sess.log(
+                    "approval_timeout",
+                    step=step,
+                    request_id=request_id,
+                    timeout=self.approval_timeout,
+                )
                 return False
             time.sleep(0.05)
 
+        if not approved:
+            sess.status = "running"
+            sess.bus.emit({"type": "status", "status": sess.status})
+            sess.log("approval_resolved", step=step, request_id=request_id, approved=False)
+            return False
+
+        # Approved - but "approved" referred to the page as it was when the
+        # request was queued, which may be minutes ago. Classify once more
+        # against the page as it is now, so an approval cannot be spent on an
+        # element that has since been replaced.
+        recheck = self.gate.revalidate(sess.id, name, args, approved_risk=result.risk)
+        sess.log("gate_recheck", step=step, tool=name, **recheck.as_log())
+        if not recheck.allowed:
+            sess.log(
+                "approval_invalidated",
+                step=step,
+                request_id=request_id,
+                risk=recheck.risk,
+                reason=recheck.reason,
+            )
+            return False
+
         sess.status = "running"
         sess.bus.emit({"type": "status", "status": sess.status})
-        sess.log("approval_resolved", step=step, request_id=request_id, approved=approved)
-        return approved
+        sess.log("approval_resolved", step=step, request_id=request_id, approved=True)
+        return True
 
     def resolve_approval(self, request_id: str, approved: bool) -> bool:
         """Hand a verdict back to a blocked run. True if it was waiting."""
