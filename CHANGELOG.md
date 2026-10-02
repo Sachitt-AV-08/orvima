@@ -17,6 +17,45 @@ documented claim against the running program, and are now pinned by tests that
 fail if the docs drift back.
 
 ### Fixed
+- **A sticky or fixed header could make an element permanently unclickable, and
+  the failure never mentioned the header.** Playwright scrolls an element into
+  view by *centring* it, so an element near the top of a page can end up under a
+  pinned header. Playwright's actionability check correctly refuses - the pointer
+  would land on the header - but it refuses by spinning out its full 10s timeout
+  and reporting a call log that names no header, so the failure read as flakiness
+  rather than as a layout problem with a known fix. Measured across seven
+  constructions first: sticky headers are usually harmless (Playwright re-centres
+  and lands correctly), and the real failure is narrow - the element is occluded
+  *and* the page cannot be scrolled to clear it. A new `occlusion.uncover`
+  measures the obstruction and scrolls by the minimum amount needed, and where no
+  scroll can help it reports that immediately, naming the occluder, rather than
+  waiting out a timeout it had already resolved.
+- **Six actions inherited that timeout, and two were worse than failing.**
+  `click`, `type`, `fill`, `hover`, `select` and `download` now uncover first and
+  fail fast on a fixed obstruction. `fill` and `select` are the notable pair:
+  measured, both *succeeded* on a header-covered field, because `fill` and
+  `select_option` set values through the DOM rather than by clicking. A credential
+  went into an invisible box and a dropdown changed a value the user never chose,
+  both reported as `verified: true`. `download` was the worst offender of the
+  failing cases: it spent 10s on the click plus 15s waiting for a download, then
+  blamed the link ("may be expired, or the site may be waiting on a permission
+  prompt") when the cause was a header. Costs 2.8 ms median per action on an
+  800-row table, against the 10s timeout it exists to avoid.
+- **The occlusion probe itself refused real sign-in forms.** Pointed at Google's
+  sign-in page, it reported the email field as covered by an in-flow element and
+  orvima declined to type. Two defects, both from reasoning about `z-index`
+  instead of asking the browser: the walk continued *past* the target and scanned
+  the whole stack, so elements painted *underneath* counted as walls - which is
+  exactly what Google's outlined-text-field border divs are; and the guard meant
+  to discard exactly those was `Number(style.zIndex) <= elZ`, where
+  `z-index: auto` parses to `NaN` and every comparison against `NaN` is false,
+  so it never fired for the `z-index: auto` that most elements carry. The probe
+  now follows the browser's own rule - `elementsFromPoint` returns paint order
+  with the topmost first, so the first node that can receive a pointer is where
+  the click lands - and no longer compares z-indices at all. `pointer-events:
+  none` overlays are seen through, since they intercept nothing however large they
+  are. Google's flow was then driven end to end with a reserved `.invalid`
+  address and answered normally: no challenge, no refusal.
 - **The approval gate's fail-closed promise held at one layer and not the next.
   `sentinel_gate.py` refused every action when its classifier was missing, but
   `api.get_gate()` returned `None` when the gate module itself could not be

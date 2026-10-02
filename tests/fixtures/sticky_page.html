@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sticky header overlap</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  /* A sticky header: stays pinned to the top while the page scrolls. */
+  #bar {
+    position: sticky; top: 0; z-index: 9999;
+    background: #222; color: #fff;
+    padding: 18px 20px; font-weight: 600;
+  }
+  .spacer { height: 1400px; padding: 20px; }
+  /* The target sits far down, so reaching it requires scrolling. */
+  #target {
+    display: block; width: 260px; padding: 16px;
+    margin: 900px 0 0 40px;
+    background: #d0e8ff; border: 2px solid #06c;
+  }
+  #below { margin: 700px 0 0 40px; padding: 16px; background: #ffe9c0; border: 2px solid #e90; }
+</style>
+</head>
+<body>
+  <div id="bar">Sticky header &mdash; stays pinned at top</div>
+  <div class="spacer">
+    <button id="target">Target button</button>
+    <div id="below">Content further down</div>
+  </div>
+  <script>
+    // Record where a click actually landed. A click that reports success while
+    // the wrong element was hit is the failure this fixture exists to catch, so
+    // the log has to be written by the elements themselves, not inferred.
+    window.__clicks = [];
+    for (const [id, tag] of [['#bar', 'header'], ['#target', 'target'], ['#below', 'below']]) {
+      document.querySelector(id).addEventListener('click', (ev) => {
+        window.__clicks.push({
+          where: tag,
+          targetId: ev.target.id,
+          targetTag: ev.target.tagName.toLowerCase(),
+          clientY: Math.round(ev.clientY),
+        });
+      });
+    }
+    window.__barRectTop = () => document.getElementById('bar').getBoundingClientRect().top;
+    window.__barHeight = () => document.getElementById('bar').getBoundingClientRect().height;
+  </script>
+</body>
+</html>

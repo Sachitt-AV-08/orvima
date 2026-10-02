@@ -32,6 +32,7 @@ from .expectations import (
     ExpectationSet,
 )
 from .identity import ElementIdentity, RefRegistry
+from .occlusion import uncover
 from .recovery import looks_irreversible
 
 DEFAULT_PROFILE = str(Path.home() / ".orvima" / "profile")
@@ -825,11 +826,33 @@ class BrowserController:
         selector = self._guard_ref(selector)
         target = self._target(selector)
         selector = self._locate(selector)
+        # Move the page if a sticky or fixed header is covering the element.
+        #
+        # Playwright scrolls an element into view by *centring* it, so an element
+        # near the top of the page can end up under a pinned header, where no
+        # click is possible. Playwright's actionability check correctly refuses -
+        # the pointer would land on the header - but it reports a bare timeout
+        # that never mentions the header, so the failure reads as flakiness rather
+        # than as a layout problem with a known fix.
+        #
+        # Only attempted when the element is actually covered: scrolling a page
+        # that was fine changes its state and can move things under the cursor.
+        moved = self._uncover_if_occluded(selector, target)
+        # The element is covered and the geometry is fixed: no scroll can move it
+        # out from under the occluder. Playwright would spend its full 10s
+        # timeout rediscovering exactly this, so the wait buys nothing - it only
+        # delays a report the caller could act on now. The named reason is the
+        # whole value here: a bare "intercepts pointer events" timeout says
+        # nothing about a sticky header.
+        self._refuse_if_unreachable(selector, "click", moved)
         before_sig = self._dom_signature()
         try:
             target.click(selector, timeout=10000)
         except Exception as exc:
-            raise BrowserError(f"click {selector!r} failed: {exc}") from exc
+            raise BrowserError(
+                f"click {selector!r} failed: {exc}"
+                + (f" {moved['reason']}" if moved.get("reason") else "")
+            ) from exc
         after_sig = self._dom_signature()
         verified = before_sig != after_sig
         # Expectations are judged against the acted-on selector, before the
@@ -838,10 +861,81 @@ class BrowserController:
         report = self._check_expectations(expect, selector)
         return {**self._state(), "verified": verified, **report}
 
+    def _refuse_if_unreachable(self, selector: str, action: str, moved: dict) -> None:
+        """Fail fast when the probe has already proved the element is unreachable.
+
+        Once `uncover` reports that the element is covered and no scroll can clear
+        it, waiting out Playwright's 10s actionability timeout buys nothing: it
+        re-derives the same geometry and reports a call log that names no header.
+
+        Only raises when the probe was *certain* - an unfixable occlusion with a
+        reason. A probe that merely failed, or a missing element, is left to
+        Playwright, which is the authority on whether an action is possible.
+
+        The message says what this action specifically did *not* do. It has to:
+        a caller reading "click '#x' failed ... Nothing was typed" has been told
+        about the wrong action, and a caller retrying after a timeout cannot tell
+        from a vague message whether a half-typed value landed in a field.
+        """
+        if moved.get("uncovered") is False and moved.get("reason"):
+            # What a refusal means, per action. A blanket "nothing happened" is
+            # true of all of them but tells the caller nothing about which state
+            # to trust - and for `type` and `fill` that is the whole question.
+            untouched = {
+                "click": "Nothing was clicked, so the page is unchanged",
+                "hover": "Nothing was hovered, so no menu or tooltip opened",
+                "type into": (
+                    "Nothing was typed, so the field still holds its previous value"
+                ),
+                "fill": (
+                    "Nothing was filled, so the field still holds its previous value"
+                ),
+                "select": (
+                    "Nothing was selected, so the dropdown keeps its previous value"
+                ),
+                "click to download": (
+                    "Nothing was clicked, so no download was started and no file "
+                    "was written"
+                ),
+            }.get(action, "Nothing happened on the page")
+            raise BrowserError(
+                f"{action} {selector!r} failed: {moved['reason']}. "
+                f"{untouched} - closing or dismissing the overlay, or acting on a "
+                f"different element, is the next step."
+            )
+
+    def _uncover_if_occluded(self, selector: str, target) -> dict:
+        """Scroll a covering header out of the way, if there is one.
+
+        Returns a dict describing what happened, including ``reason`` when the
+        element could not be uncovered - that is appended to any click failure so
+        the cause names the header instead of leaving a bare timeout.
+
+        Never clicks, types or fills. The decision to act belongs to the caller,
+        which has seen whether the element was reachable.
+        """
+        try:
+            outcome = uncover(target, selector)
+        except Exception as exc:  # pragma: no cover - defensive
+            # A failure here must not stop a click that would otherwise work:
+            # uncovering is an optimisation, and Playwright's own actionability
+            # check remains the backstop.
+            return {"uncovered": True, "reason": None, "skipped": str(exc)}
+        if outcome.get("error"):
+            return {"uncovered": True, "skipped": outcome["error"]}
+        return outcome
+
     def hover(self, selector: str) -> dict:
+        self._require_open()
         selector = self._guard_ref(selector)
         target = self._target(selector)
         selector = self._locate(selector)
+        # Measured: a hover onto a header-covered element spent the full 10s
+        # Playwright timeout and reported a call log naming no header. Hovers
+        # open menus and reveal tooltips, so this is the common way an agent
+        # discovers that a control exists.
+        moved = self._uncover_if_occluded(selector, target)
+        self._refuse_if_unreachable(selector, "hover", moved)
         try:
             target.hover(selector, timeout=10000)
         except Exception as exc:
@@ -854,6 +948,14 @@ class BrowserController:
         target = self._target(selector)
         selector = self._locate(selector)
         delay = _type_delay_ms() if delay_ms is None else max(0, int(delay_ms))
+        # Focusing a field means clicking it first, so this has exactly the same
+        # exposure to a covering header as `click` does - and it matters more
+        # here, because a sign-in form under a sticky header is the ordinary case
+        # rather than an edge case. Measured before the change: `type` into a
+        # header-covered field spent the full 10s timeout and reported a
+        # Playwright call log naming no header.
+        moved = self._uncover_if_occluded(selector, target)
+        self._refuse_if_unreachable(selector, "type into", moved)
         try:
             target.click(selector, timeout=10000)
             self.page.keyboard.type(text, delay=delay)
@@ -870,6 +972,14 @@ class BrowserController:
         selector = self._guard_ref(selector)
         target = self._target(selector)
         selector = self._locate(selector)
+        # `fill` sets the value without clicking, so it *succeeds* on a field a
+        # header is covering - measured, not assumed. That is worse than failing:
+        # it reports `verified: true` for a field the user cannot see, so a
+        # credential goes into an invisible box and the next `click` lands
+        # somewhere else entirely. Scrolling it into view first is a no-op when
+        # nothing covers it, and makes the action visible when something does.
+        moved = self._uncover_if_occluded(selector, target)
+        self._refuse_if_unreachable(selector, "fill", moved)
         try:
             target.fill(selector, text, timeout=10000)
         except Exception as exc:
@@ -881,9 +991,16 @@ class BrowserController:
         return {"value": value, "verified": verified, **self._state()}
 
     def select(self, selector: str, value: str) -> dict:
+        self._require_open()
         selector = self._guard_ref(selector)
         target = self._target(selector)
         selector = self._locate(selector)
+        # Measured: `select_option` sets the value through the DOM and therefore
+        # *succeeds* on a header-covered field - the same invisible-action problem
+        # `fill` had. The user watching the live viewport sees a dropdown that
+        # never changed, and a form submitted with a value they did not choose.
+        moved = self._uncover_if_occluded(selector, target)
+        self._refuse_if_unreachable(selector, "select", moved)
         try:
             values = target.select_option(selector, value, timeout=10000)
         except Exception as exc:
@@ -1001,6 +1118,13 @@ class BrowserController:
         selector = self._guard_ref(selector)
         target = self._target(selector)
         selector = self._locate(selector)
+        # Measured before wiring: a download link under a sticky header spent
+        # 10s on the click and then another 15s waiting for a download that
+        # could never start, before failing with a message blaming the link.
+        # The link was fine. This is the worst instance of the problem, because
+        # the failure is reported as "expired link" when the cause is a header.
+        moved = self._uncover_if_occluded(selector, target)
+        self._refuse_if_unreachable(selector, "click to download", moved)
         try:
             with self.page.expect_download(timeout=timeout_ms) as info:
                 target.click(selector, timeout=10000)
