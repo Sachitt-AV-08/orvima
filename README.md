@@ -23,7 +23,7 @@ No cloud, no API key to try it, no account. Install it, point your AI at it, don
 | | |
 |---|---|
 | **Live viewport** | See exactly what the agent sees — frames stream in real time via SSE. |
-| **Human-in-the-loop** | Pause, resume, or approve any action before it commits. |
+| **Human-in-the-loop** | Pause or resume a run at any time. An optional fail-closed approval gate holds risky actions for a human - see [Approvals](#approvals). |
 | **Verified steps** | Every action confirms the DOM result (`snapshot`) before the agent proceeds — no silent failures, no guessed success. |
 
 Local-first. Everything runs at `127.0.0.1`. Your cookies, sessions and scrapes never leave your computer. Bring your own brain: plug in any OpenAI-compatible model (OpenAI, OpenRouter, Groq, local Ollama), or use your MCP client (Claude, Cursor, Copilot) as the brain.
@@ -163,7 +163,7 @@ than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
 | | Orvima | Playwright MCP | Chrome DevTools MCP | browser-use |
 |---|---|---|---|---|
 | **Live viewport** | ✅ SSE stream | ❌ | ❌ | ❌ |
-| **Human approval** | ✅ pause/resume/approve | ❌ | ❌ | ❌ |
+| **Human approval** | pause/resume always; optional fail-closed gate holds risky actions | ? | ? | ? |
 | **Verified steps** | ✅ DOM-confirmed | ❌ | ❌ | ❌ |
 | **Your logins / your profile** | ✅ persistent | ❌ fresh | ✅ your profile | ❌ fresh |
 | **Local-first / loopback only** | ✅ | ✅ | ✅ | ✅ |
@@ -242,8 +242,46 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 - [x] CI + test suite (344 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Dashboard UI (watch the agent live, approve actions)
-- [ ] Media + downloads
+- [ ] Media playback (file downloads are done: `browse_download`)
 - [ ] Cross-platform browser detection (macOS/Linux Chrome/Edge paths)
+
+## Approvals
+
+Whether an action waits for you depends on how you started orvima and what is
+installed. This is worth stating plainly, because the three cases behave very
+differently and the failure mode in the second one looks like a broken install.
+
+| How you run it | What actually happens |
+|----------------|-----------------------|
+| `orvima run` (CLI) | **Fully unattended.** No gate is constructed; every action runs without being judged |
+| `orvima serve` (HTTP API), `sentinel` not installed | **Every action waits for you**, including reads like `browse_snapshot`. Nothing can be judged, so nothing is auto-approved |
+| `orvima serve` with `sentinel` installed | Only actions the gate flags are held for a human verdict |
+| `ORVIMA_SENTINEL=off` | **Fully unattended**, deliberately. Reported as `gate: "off"` at `/api/gate/stats` |
+
+`sentinel` is an optional package and is **not** a declared dependency - not even
+an extra. So the second row is what a fresh `pip install orvima` gives you: an
+API that holds every action for approval because there is no classifier to judge
+it. That is the fail-closed default working, and the refusal message tells you
+both ways out - install `sentinel`, or set `ORVIMA_SENTINEL=off` and accept that
+nothing is being checked.
+
+Check what you have:
+
+```bash
+curl -s localhost:8000/api/gate/stats
+# {"gate": "degraded", "available": false, ...}   <- nothing is being judged
+# {"gate": "on", "available": true, ...}          <- judging is in force
+# {"gate": "off", ...}                            <- deliberately unattended
+```
+
+`on`, `degraded` and `off` are kept distinct on purpose. "A human switched this
+off" and "the gate failed to load" call for opposite responses, and collapsing
+them is how a malfunction quietly becomes a policy.
+
+What the gate is not: it is a classifier plus a word list, and it is wrong in
+both directions. A genuinely dangerous action behind an innocuously-worded button
+may pass; a harmless action may prompt. It reduces how much you have to read
+carefully. It does not replace judgement.
 
 ## Security
 
@@ -255,11 +293,10 @@ Orvima is **loopback-only by default** and stores nothing of yours remotely. It 
 |------|--------|-------|
 | CAPTCHAs / 2FA | ❌ Not supported | Human takeover (pause/resume) is the intended workflow |
 | File dialogs | ❌ Not supported | Human takeover required |
-| Iframes | ⚠️ Partial | Detected and noted in snapshot; not traversed |
-| Shadow DOM | ⚠️ Partial | Not traversed (host detection not yet implemented) |
-| Browser updates | ⚠️ May break selectors | Fixture tests catch regressions; update fixtures when needed |
-| CAPTCHAs on login | ❌ Not solvable | Pause, solve manually, resume |
-| Media / downloads | ❌ Not supported | On roadmap |
+| Browser updates | may break selectors | Fixture tests catch regressions; update fixtures when needed |
+| CAPTCHAs on login | not solvable | Pause, solve manually, resume |
+| Media playback | not supported | On roadmap. File *downloads* are supported via `browse_download` |
+| Unreachable frames | partial | Same-origin iframes and shadow roots are traversed and get frame-scoped refs (`f2:e3`). A frame Chromium cannot read is listed in `notTraversed` with its src and the reason rather than silently missing |
 
 These are honest constraints — not bugs. Orvima is designed for human-in-the-loop automation where the human handles the hard edge cases.
 

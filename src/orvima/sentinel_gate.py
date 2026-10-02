@@ -331,7 +331,12 @@ class SentinelGate:
             return GateResult(
                 allowed=False,
                 risk="unknown",
-                reason="sentinel not loaded; refusing to auto-approve",
+                reason=(
+                    "sentinel not loaded, so no action can be judged; "
+                    "refusing to auto-approve. Install the 'sentinel' package "
+                    "to enable judging, or set ORVIMA_SENTINEL=off to run "
+                    "unattended with no gate in force."
+                ),
                 degraded=True,
             )
 

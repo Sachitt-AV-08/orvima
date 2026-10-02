@@ -46,6 +46,39 @@ from orvima.agent import AgentLoop  # noqa: E402
 from orvima.sentinel_gate import SentinelGate  # noqa: E402
 
 
+def _plain(markdown: str) -> str:
+    """Read the prose without markdown emphasis, so claims match literally.
+
+    Only `*` is removed, and underscores are deliberately left alone: they are
+    part of the tokens these assertions check for. Stripping `_` turns
+    `ORVIMA_SENTINEL=off` into `ORVIMASENTINEL=off`, and the test then fails
+    against a README that says exactly the right thing - which is worse than no
+    test, because the obvious response is to loosen the assertion until it goes
+    green rather than to find the real cause.
+    """
+    return markdown.replace("*", "")
+
+
+def _approvals_section() -> str:
+    """Just the README's Approvals section.
+
+    Assertions on the whole document pass on a stray second mention of
+    `/api/gate/stats` even when the section that is supposed to carry it has
+    been renamed away. Scoping to the section makes those mutations detectable.
+    """
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
+        encoding="utf-8"
+    )
+    start = readme.find("## Approvals")
+    assert start != -1, (
+        "the README has no '## Approvals' section; the three run modes - CLI "
+        "unattended, serve degraded, ORVIMA_SENTINEL=off - are documented nowhere "
+        "else, and a user with a stuck session has no way to work out why"
+    )
+    end = readme.find("\n## ", start + 1)
+    return _plain(readme[start:end] if end != -1 else readme[start:])
+
+
 @pytest.fixture
 def clean_gate_cache():
     """Reset the module-level gate cache around each test."""
@@ -214,6 +247,185 @@ class TestDisablingTheGateIsVisible:
         assert api.gate_status() == "degraded", (
             "a malfunction is being reported as though the gate were switched off"
         )
+
+
+class TestWhatAFreshInstallActuallyDoes:
+    """The default, pinned because the README now states it.
+
+    Verified rather than assumed, and it is not what the docs used to imply.
+    With `sentinel` not installed - and it is not a declared dependency, not even
+    an extra - `make_gate` produces a gate with no policy, which refuses
+    *everything*. Not just purchases: `browse_snapshot` too.
+
+    That is fail-closed behaving correctly. It is also a fresh install that
+    appears broken, with the reason written nowhere a user would look. Hence
+    this test: the documented behaviour is a fact the suite holds, not prose
+    that decays.
+    """
+
+    def _gate_without_sentinel(self, monkeypatch):
+        """Simulate a fresh install: no sentinel package on the path."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked(name, *a, **k):
+            if name == "sentinel" or name.startswith("sentinel."):
+                raise ModuleNotFoundError("No module named 'sentinel'")
+            return real_import(name, *a, **k)
+
+        monkeypatch.setattr(builtins, "__import__", blocked)
+        monkeypatch.setitem(sys.modules, "sentinel", None)
+        for mod in [m for m in sys.modules if m.startswith("sentinel.")]:
+            monkeypatch.delitem(sys.modules, mod, raising=False)
+        api._gate = None
+        return api.get_gate()
+
+    def test_a_fresh_install_refuses_rather_than_running_unattended(
+        self, monkeypatch
+    ):
+        gate = self._gate_without_sentinel(monkeypatch)
+        result = gate.check("browse_click", {"selector": "#pay"})
+        assert result.allowed is False
+        assert result.degraded is True
+
+    def test_a_fresh_install_refuses_reads_too(self, monkeypatch):
+        """The part that makes it look broken rather than cautious.
+
+        A gate that only blocked purchases would be a safety feature. One that
+        blocks `browse_snapshot` is an agent that cannot see, and the user is
+        left with a session that refuses to do anything for no stated reason.
+        """
+        gate = self._gate_without_sentinel(monkeypatch)
+        assert gate.check("browse_snapshot", {}).allowed is False, (
+            "a fresh install now runs reads unattended - if this test fails, the "
+            "README's account of the default is wrong again"
+        )
+
+    def test_the_reason_says_what_is_missing_and_how_to_change_it(self, monkeypatch):
+        """A refusal the operator cannot act on is only half a safeguard."""
+        gate = self._gate_without_sentinel(monkeypatch)
+        reason = gate.check("browse_click", {"selector": "#pay"}).reason
+        assert "sentinel" in reason.lower(), reason
+        assert "ORVIMA_SENTINEL" in reason or "install" in reason.lower(), (
+            f"the refusal does not say how to proceed: {reason!r}"
+        )
+
+    def test_switching_the_gate_off_is_documented_and_works(self, monkeypatch):
+        monkeypatch.setenv("ORVIMA_SENTINEL", "off")
+        api._gate = None
+        assert api.get_gate() is None, (
+            "ORVIMA_SENTINEL=off is the documented escape hatch and must work"
+        )
+
+
+class TestWhatTheDocsClaim:
+    """The README and SECURITY.md make specific claims about approvals.
+
+    Both used to claim more than was true - "approve any action before it
+    commits", "control of every action", "read-only mode by default" (no such
+    mode exists), "file dialogs not supported" (`browse_set_files` shipped).
+    Prose that overstates a safety property is worse than no prose, because it
+    is what a reader checks instead of checking the code.
+
+    So the claims are pinned here. Each test names the doc line it protects, and
+    fails if the behaviour drifts away from what the docs say - in either
+    direction, because a doc that has become too cautious is also wrong.
+    """
+
+    def test_readme_still_states_the_three_run_modes(self):
+        """README '## Approvals' table: CLI unattended, serve degraded, off."""
+        section = _approvals_section()
+        assert "ORVIMA_SENTINEL=off" in section, (
+            "the Approvals table no longer offers the deliberate off switch"
+        )
+        assert "/api/gate/stats" in section, (
+            "the Approvals section no longer says how to check which mode you "
+            "are in, so a stuck session is undebuggable from the docs"
+        )
+        assert "orvima run" in section and "orvima serve" in section, (
+            "the Approvals table must distinguish the CLI (no gate at all) from "
+            "the API (a gate, possibly degraded)"
+        )
+
+    def test_the_sentinel_dependency_claim_is_true_of_pyproject(self):
+        """Check the packaging, not the prose that describes it.
+
+        The README says `sentinel` is not a declared dependency. Asserting that
+        against the README is circular - it only proves someone typed a
+        sentence. If someone later adds a `sentinel` extra, the sentence becomes
+        false and nothing here would notice, because the mutation does not touch
+        the prose at all.
+        """
+        pyproject = (
+            Path(__file__).resolve().parent.parent / "pyproject.toml"
+        ).read_text(encoding="utf-8")
+        assert "sentinel" not in pyproject, (
+            "`sentinel` is now declared in pyproject, so the README's 'not a "
+            "declared dependency' warning is out of date. Either drop the extra "
+            "or fix the sentence - a stale install instruction is the same "
+            "failure as a missing one."
+        )
+
+    def test_readme_does_not_claim_unconditional_approval(self):
+        """The old claim: 'approve any action before it commits'."""
+        readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
+            encoding="utf-8"
+        )
+        for overclaim in ("approve any action", "control of every action"):
+            assert overclaim not in readme.lower(), (
+                f"README still claims '{overclaim}'. Whether a gate is in force "
+                "depends on how orvima was started and whether `sentinel` is "
+                "installed; the CLI has no gate at all."
+            )
+
+    def test_security_md_does_not_claim_a_read_only_mode(self):
+        """No read-only mode exists. `browse_eval` measures mutation, nothing more.
+
+        This was the most dangerous of the false claims, because it sat in the
+        threat-model table as a mitigation for prompt injection.
+        """
+        security = (Path(__file__).resolve().parent.parent / "SECURITY.md").read_text(
+            encoding="utf-8"
+        )
+        assert "read-only mode by default" not in security.lower()
+        # Guard the claim in code, not just in prose: no read-only flag exists.
+        package = Path(__file__).resolve().parent.parent / "src" / "orvima"
+        hits = [
+            f.name
+            for f in package.glob("*.py")
+            if "read_only" in f.read_text(encoding="utf-8")
+            and "read-only where possible" not in f.read_text(encoding="utf-8")
+        ]
+        assert not hits, (
+            f"{hits} now mention read_only; SECURITY.md asserts no such mode "
+            "exists, so one of the two is wrong and it should be resolved in code"
+        )
+
+    def test_security_md_does_not_claim_file_dialogs_are_unsupported(self):
+        """`browse_set_files` shipped; the native OS picker still is not driven."""
+        security = (Path(__file__).resolve().parent.parent / "SECURITY.md").read_text(
+            encoding="utf-8"
+        )
+        assert "File dialogs** - Not supported" not in security
+        tools = (
+            Path(__file__).resolve().parent.parent / "src" / "orvima" / "tools.py"
+        ).read_text(encoding="utf-8")
+        assert "browse_set_files" in tools, (
+            "SECURITY.md no longer lists file dialogs as a limit, but the tool "
+            "is gone - if support was dropped, put the limit back"
+        )
+
+    def test_the_documented_gate_statuses_are_the_ones_the_code_returns(self):
+        """README promises on / degraded / off from /api/gate/stats."""
+        from fastapi.testclient import TestClient
+
+        from orvima.api import create_app
+
+        client = TestClient(create_app())
+        body = client.get("/api/gate/stats").json()
+        assert body["gate"] in ("on", "degraded", "off"), body
+        assert "gate" in body, "the status the README tells people to read is absent"
 
 
 class TestAuthoriseFailOpenIsNotMistakenForSafety:

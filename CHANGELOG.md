@@ -11,6 +11,50 @@ Each phase was verified load-bearing by breaking the fix in turn and confirming
 the test count moved — a green test that cannot detect its own bug is worse than
 no test. Numbers are measured, not estimated.
 
+The gate and documentation work below extends that method past the code: the
+false claims in `SECURITY.md` and `README.md` were found by checking each
+documented claim against the running program, and are now pinned by tests that
+fail if the docs drift back.
+
+### Fixed
+- **The approval gate's fail-closed promise held at one layer and not the next.
+  `sentinel_gate.py` refused every action when its classifier was missing, but
+  `api.get_gate()` returned `None` when the gate module itself could not be
+  imported — and `None` means *no gate*, which `_authorise` treats as allow
+  everything. A syntax error or partial install silently converted a gated agent
+  into a fully autonomous one: the guarantee was reachable only by breaking the
+  module that implements it. `get_gate` now returns a self-contained
+  `_RefusingGate` that refuses, and `gate_status()` reports `on` / `degraded` /
+  `off` at `/api/gate/stats` so "a human switched this off" and "this broke"
+  stop looking the same.
+- **The refusal explained itself only halfway.** When nothing can be judged, the
+  message said `sentinel not loaded; refusing to auto-approve` — naming the
+  problem but not the two ways out. It now names both: install `sentinel`, or set
+  `ORVIMA_SENTINEL=off` and accept that nothing is being checked.
+
+### Documentation
+- **Three comments described the fail-open as safe**, which is the dangerous kind
+  of wrong: they survive audit by reading true. `agent.py` claimed "the pause
+  event at the top of the loop is the only gate", `api.py` claimed disabling
+  Sentinel "restores the original behaviour of pausing at every step". Neither is
+  true — `Session.__post_init__` sets the `_paused` event, so `wait()` returns
+  immediately. It is an operator pause control, not an approval gate. All three
+  now say what is actually true. The `gate is None` branch itself is unchanged:
+  `bench.py` and `cli.py` construct a loop with no gate and expect autonomy.
+- **SECURITY.md claimed protections that do not exist**: "control of every
+  action", and "read-only mode by default" as a mitigation for prompt injection.
+  There is no read-only mode. `browse_eval` measures a before/after DOM signature
+  and refuses obviously mutating JS, which is a weaker and different thing.
+- **SECURITY.md and README listed file dialogs as unsupported.** `browse_set_files`
+  attaches files to an `<input type=file>` directly; the native OS picker is still
+  not driven, and that is now the limit that is written down.
+- **README claimed "approve any action before it commits."** Whether a gate is in
+  force depends on how orvima was started and whether `sentinel` is installed —
+  and `sentinel` is not a declared dependency, not even an extra, so a fresh
+  install holds *every* action (including `browse_snapshot`) for a human. A new
+  `## Approvals` section states the three run modes and how to check which one
+  you are in.
+
 ### Added
 - **Benchmark** (`bench.py`, `bench_site.py`): 11 tasks against a simulated site
   with a scripted planner, plus a safety gate graded on a fixture ledger.
