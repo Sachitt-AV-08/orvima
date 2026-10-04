@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 
+from .backend import NavigationBackend
 from .errors import BrowserError
 
 _PAGES = {
@@ -42,8 +43,15 @@ _LINKS = [
 ]
 
 
-class DemoBrowser:
-    """Deterministic stand-in for BrowserController (same method names)."""
+class DemoBrowser(NavigationBackend):
+    """Deterministic stand-in for BrowserController (same method names).
+
+    Serves three acme.dev pages and nothing else. A url it does not have is
+    refused rather than folded onto the home page: silently serving a
+    different page and reporting success is what made this backend unable to
+    answer an expectation, and an offline demo that lies about where it is
+    teaches an agent to trust a page it is not on.
+    """
 
     def __init__(self, base_url: str = "https://acme.dev"):
         self._url = base_url
@@ -61,18 +69,56 @@ class DemoBrowser:
     def page(self) -> None:
         return None  # kept so callers that reach for `.page` don't crash
 
+    def _page(self) -> dict:
+        return _PAGES.get(self._url) or _PAGES["https://acme.dev"]
+
     def _state(self) -> dict:
-        return {"url": self._url, "title": _PAGES.get(self._url, _PAGES["https://acme.dev"])["title"]}
+        return {"url": self._url, "title": self._page()["title"]}
 
-    def navigate(self, url: str) -> dict:
-        if url not in _PAGES and "acme.dev" not in url:
-            url = "https://acme.dev"  # unknown page folds back to home
+    def _read_page_state(self) -> dict:
+        """Url plus the page body, so expect_text has something real to match."""
+        page = self._page()
+        return {"url": self._url, "text": f"{page['title']} {page['body']}"}
+
+    def _count_matching(self, selector: str | None) -> int | None:
+        """Count the scripted items the selector names, or None if it names none.
+
+        The items are the only countable things this backend has. A selector
+        that names no item is *unreadable*, not zero: reporting 0 would let
+        `expect_count=0` pass on a selector that does not exist, which verifies
+        nothing.
+        """
+        if not selector:
+            return None
+        needle = selector.strip().lower()
+        if not needle:
+            return None
+        matches = sum(1 for item in self._page()["items"] if needle in item.lower())
+        return matches or None
+
+    def _perform_navigate(self, url: str) -> None:
+        """Move to a page this backend actually has.
+
+        Raises for anything else. Folding an unknown url back to the home page
+        meant `navigate("https://dev.to/new")` answered "ok, verified: True"
+        while the page never changed - a tool reporting success for an action
+        it did not take.
+        """
+        target = url.strip()
+        # A trailing slash names the same page, and callers add one routinely.
+        canonical = target[:-1] if target.endswith("/") and len(target) > 1 else target
+        if canonical not in _PAGES:
+            known = ", ".join(sorted(_PAGES))
+            raise BrowserError(
+                f"demo mode cannot reach {url!r} - there is no real browser "
+                f"behind this, only a scripted site. Known pages: {known}. "
+                "Run orvima with --mode real to drive an actual browser."
+            )
         self._history.append(self._url)
-        self._url = url
-        self.log.append(f"navigate {url}")
-        return {**self._state(), "load_state": "domcontentloaded", "verified": True}
+        self._url = canonical
+        self.log.append(f"navigate {canonical}")
 
-    def click(self, selector: str) -> dict:
+    def _perform_click(self, selector: str) -> dict:
         old_url = self._url
         for label, target in _LINKS:
             if label.lower() in selector.lower() and target != self._url:
@@ -122,6 +168,9 @@ class DemoBrowser:
         return self._state()
 
     def open_tab(self, url: str) -> dict:
+        # Tabs are a convenience surface, not a navigation claim: an offline
+        # demo is not asking the caller to verify intent here, so an unknown url
+        # still folds to the home page rather than raising.
         if url not in _PAGES:
             url = "https://acme.dev"
         self._tabs.append(self._url)

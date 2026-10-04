@@ -82,6 +82,7 @@ def tool_browse_navigate(
     url: str,
     expect_url: str | None = None,
     expect_text: str | None = None,
+    expect_timeout_ms: int = DEFAULT_EXPECT_TIMEOUT_MS,
 ) -> dict:
     """Open a URL. Waits for the page to be interactive and returns URL + title.
 
@@ -90,12 +91,21 @@ def tool_browse_navigate(
     ``expect_timeout_ms``, the call fails with the mismatch rather than reporting
     a successful navigation - which is how a redirect to a login page or the
     wrong account goes unnoticed. Omit them for today's behaviour.
+
+    The check is the same on every backend, real browser or offline. A backend
+    that cannot read the page it claims to have reached reports ``verified:
+    false`` rather than ``verified: true``.
     """
     try:
         return {
             "ok": True,
             **browser.navigate(
-                url, **_expect_kwargs(expect_url=expect_url, expect_text=expect_text)
+                url,
+                **_expect_kwargs(
+                    expect_url=expect_url,
+                    expect_text=expect_text,
+                    expect_timeout_ms=expect_timeout_ms,
+                )
             ),
         }
     except Exception as exc:

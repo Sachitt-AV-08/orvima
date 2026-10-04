@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .backend import NavigationBackend
+
 
 class BenchError(RuntimeError):
     """Raised for anything the loop is expected to have to recover from."""
@@ -58,11 +60,18 @@ class Counter:
         self.clicks[target] = self.clicks.get(target, 0) + 1
 
 
-class BenchSite:
+class BenchSite(NavigationBackend):
     """Minimal browser surface over a scripted site.
 
     Selectors are plain strings; the "refs" the tools hand out are just
     ``#id`` selectors, so a stale ref is a selector that no longer resolves.
+
+    Implements the navigation contract from `NavigationBackend` like any other
+    backend. That matters more here than anywhere else: this is the site
+    `orvima.bench` measures the agent through, and a harness that answers
+    "verified" to every navigation cannot be used to detect a navigation that
+    did not succeed - its score would say nothing about the thing it exists to
+    measure.
     """
 
     def __init__(self, start: str = "login", counter: Counter | None = None) -> None:
@@ -93,15 +102,41 @@ class BenchSite:
             self.visible.discard("#panel")
             self.visible.add("#row-1-v2")
 
+    # ------------------------------------------------------------- readers --
+    def _state(self) -> dict:
+        return {"url": self.url, "title": self.page}
+
+    def _read_page_state(self) -> dict:
+        """Url plus the page's own text, so expect_text is answerable here.
+
+        Before this existed the benchmark site returned no text at all, so an
+        `expect_text` on it had nothing to compare against.
+        """
+        visible = "\n".join(sorted(self.visible))
+        return {"url": self.url, "text": f"page: {self.page}\nvisible:\n{visible}"}
+
+    def _count_matching(self, selector: str | None) -> int | None:
+        """Count visible elements the selector names, or None if it names none.
+
+        Returning None rather than 0 matters: an element that is simply absent
+        is not a measurement of zero matching nodes, it is an unreadable
+        selector, and conflating them lets a broken expectation pass.
+        """
+        if not selector or not selector.strip():
+            return None
+        needle = selector.strip()
+        if not any(needle in visible for visible in self.visible):
+            return None
+        return sum(1 for visible in self.visible if visible == needle)
+
     # -------------------------------------------------------------- surface --
-    def navigate(self, url: str, **_: object) -> dict:
+    def _perform_navigate(self, url: str) -> None:
         self.url = url
         self.page = url.rstrip("/").rsplit("/", 1)[-1] or "login"
         self.visible = set(PAGES.get(self.page, ("#title",)))
         self.counter.navs.append(url)
-        return {"ok": True, "url": self.url, "title": self.page, "verified": True}
 
-    def click(self, selector: str, **_: object) -> dict:
+    def _perform_click(self, selector: str) -> dict:
         self.counter.click(selector)
 
         if selector == "#submit":

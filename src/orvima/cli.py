@@ -37,19 +37,102 @@ def cmd_demo() -> int:
     return 0
 
 
+def is_loopback(host: str) -> bool:
+    """Whether binding `host` keeps the port on this machine only.
+
+    Resolved rather than string-matched, because the strings that matter are not
+    all loopback: an empty host means every interface, and a hostname like
+    `127.0.0.1.example.com` merely contains a loopback address.
+    """
+    import ipaddress
+    import socket as _socket
+
+    candidate = (host or "").strip()
+    if not candidate:
+        return False  # 0.0.0.0 / all interfaces
+    bare = candidate.strip("[]")
+    try:
+        return ipaddress.ip_address(bare).is_loopback
+    except ValueError:
+        pass
+    try:
+        resolved = _socket.getaddrinfo(candidate, None, proto=_socket.IPPROTO_TCP)
+    except OSError:
+        return False  # unresolvable: cannot be shown to be local
+    for info in resolved:
+        address = info[4][0]
+        try:
+            if not ipaddress.ip_address(address).is_loopback:
+                return False
+        except ValueError:
+            return False
+    return bool(resolved)
+
+
+def check_bind(host: str) -> str | None:
+    """Why this bind is unsafe, or None if it is fine.
+
+    The refusal is at startup rather than per request because the alternative -
+    an endpoint that rejects unauthenticated calls - still means the port is
+    open and serving a logged-in browser's control surface to the network. The
+    refusal has to be "orvima will not start like that".
+
+    Loopback needs no token: there is no trust boundary to cross. Everything
+    else does, because `--host` exists and someone will eventually use it to
+    reach orvima from a phone.
+    """
+    if is_loopback(host):
+        return None
+    from .api import configured_token  # noqa: PLC0415 - keeps --version light
+
+    if configured_token():
+        return None
+    return (
+        f"refusing to serve on {host or '(every interface)'}: that puts an "
+        "unauthenticated approval endpoint - which can spend money in a real "
+        "logged-in browser - on your network.\n"
+        "  Fix one of:\n"
+        "    set ORVIMA_API_TOKEN to a secret you generate, and send it as\n"
+        f"      the X-Orvima-Token header or 'Authorization: Bearer <token>'\n"
+        "    or bind loopback instead: --host 127.0.0.1\n"
+        "  Reaching it from a phone is better done over Tailscale than by "
+        "exposing this port to a network."
+    )
+
+
 def cmd_serve(host: str, port: int, mode: str) -> int:
     import uvicorn  # noqa: PLC0415
 
-    from .api import app  # noqa: PLC0415 - lazy so --version stays light
+    problem = check_bind(host)
+    if problem:
+        print(f"orvima: {problem}", file=sys.stderr)
+        return 1
 
     # mode is per-session when creating a session; server just carries the app
     _mode_env(mode)
+    # create_app re-checks the bind, so the guard holds for any caller and not
+    # just this one.
+    from .api import create_app  # noqa: PLC0415 - lazy so --version stays light
+
+    app = create_app(host)
     print(f"orvima API listening on http://{host}:{port}  (docs at /docs)")
     print("new session -> POST /api/sessions  |  watch -> GET /api/sessions/{id}/events")
     if mode == "demo":
         print("demo mode: every session runs against the offline acme.dev simulator")
     else:
         print("real mode: sessions launch a local Chromium (playwright)")
+    from .api import configured_token  # noqa: PLC0415
+
+    if configured_token():
+        print(
+            "API token set: acting endpoints require it. Keep it off shared "
+            "screens and out of shell history."
+        )
+    else:
+        print(
+            f"no API token set, so acting endpoints are open to anything on "
+            f"{host} - fine on loopback, not fine on a network"
+        )
     return uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
@@ -93,19 +176,73 @@ def _mode_env(mode: str) -> None:
     os.environ.setdefault("ORVIMA_MODE", mode)
 
 
-def cmd_doctor() -> int:
-    """Run a health check on the Orvima environment."""
+def resolve_mode(mode: str | None) -> str:
+    """Which mode this invocation will actually run in.
+
+    One function, so `doctor` cannot disagree with the commands it checks.
+    """
+    return mode or os.environ.get("ORVIMA_MODE", "demo")
+
+
+def _warn_inert_browser_flag(browser: str | None, mode: str) -> None:
+    """Say so when `--browser` will have no effect.
+
+    In demo mode there is no browser behind orvima, so the channel is stored
+    and never read. A flag that is accepted and does nothing reads as "that part
+    is configured", which is how a config asking for Brave came to be serving
+    acme.dev for an entire session without a word of complaint.
+    """
+    if browser and mode != "real":
+        print(
+            f"orvima: --browser {browser} has no effect in {mode} mode — there is "
+            "no real browser behind this. Add --mode real (or set ORVIMA_MODE=real) "
+            "to drive an actual browser.",
+            file=sys.stderr,
+        )
+
+
+def cmd_doctor(mode: str | None = None) -> int:
+    """Run a health check on the Orvima environment.
+
+    Reports the mode it would run in, and fails when that mode is not the one
+    that drives a browser. A health check that passes while the product is in a
+    non-functional configuration is worse than none: it is trusted.
+    """
     from pathlib import Path
 
     checks = []
+    active = resolve_mode(mode)
+    drives_a_browser = active == "real"
 
-    # 1. Browser detection
+    # 0. The mode itself, first because everything below depends on it.
+    checks.append(
+        {
+            "name": "Mode",
+            "ok": drives_a_browser,
+            "detail": (
+                f"{active} — will drive your real browser"
+                if drives_a_browser
+                else f"{active} — NOT driving a real browser; "
+                "acme.dev is a scripted site and nothing you do here reaches the web"
+            ),
+        }
+    )
+
+    # 1. Browser detection. Only what real mode would use, and only as a
+    # detection result — never reported as a browser in use.
     channel = detect_channel()
     checks.append(
         {
             "name": "Browser",
-            "ok": channel is not None,
-            "detail": channel or "no Chrome/Edge/Chromium found on PATH",
+            # In demo mode a missing browser is not a problem, because nothing
+            # needs one. Reporting it as a failure would be noise; reporting it
+            # as ready would be the lie this check used to tell.
+            "ok": channel is not None or not drives_a_browser,
+            "detail": (
+                f"would use {channel}"
+                if channel
+                else "no Chrome/Edge/Chromium/Brave found on PATH"
+            ),
         }
     )
 
@@ -181,11 +318,18 @@ def cmd_doctor() -> int:
 
     print()
     if all_ok:
-        print("All checks passed — Orvima is ready.")
+        print(f"All checks passed — Orvima is ready ({active} mode).")
         return 0
-    else:
-        print("Some checks failed — see above.")
+    if not drives_a_browser:
+        # Named first, because it is the reason to care and the rest are noise
+        # next to it.
+        print(
+            f"Some checks failed — and note that orvima is in {active} mode, so "
+            "no real browser is behind it. Pass --mode real to drive one."
+        )
         return 1
+    print("Some checks failed — see above.")
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -234,8 +378,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    mode = getattr(args, "mode", None) or os.environ.get("ORVIMA_MODE", "demo")
+    mode = resolve_mode(getattr(args, "mode", None))
     if getattr(args, "browser", None):
+        _warn_inert_browser_flag(args.browser, mode)
         os.environ["ORVIMA_BROWSER"] = args.browser
     if getattr(args, "attach", None):
         os.environ["ORVIMA_ATTACH"] = args.attach
@@ -266,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
                 bench_argv += ["--out", args.out]
             return bench_main(bench_argv)
         if args.command == "doctor":
-            return cmd_doctor()
+            return cmd_doctor(mode)
         return 2
     except Exception as exc:  # noqa: BLE001 - friendly CLI errors
         print(f"orvima: {exc}", file=sys.stderr)

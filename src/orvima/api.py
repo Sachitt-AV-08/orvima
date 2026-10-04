@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import threading
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -204,7 +205,108 @@ class Approval(BaseModel):
     note: str = ""
 
 
-def create_app() -> FastAPI:
+#: Header a remote caller may present the token in. A custom header rather than
+#: only `Authorization` so a phone page can read the token from a form field and
+#: a CLI can use either.
+TOKEN_HEADER = "X-Orvima-Token"
+
+
+def configured_token() -> str | None:
+    """The API token, or None when none is set.
+
+    A blank or whitespace-only value counts as unset. A shell variable that
+    expanded to nothing is the common way to end up with a token that is present
+    in the environment but carries no secret, and treating that as configured
+    would hand out an endpoint anyone could open.
+    """
+    raw = os.environ.get("ORVIMA_API_TOKEN", "")
+    return raw.strip() or None
+
+
+def token_ok(offered: str | None) -> bool:
+    """Whether `offered` is the configured token.
+
+    With no token configured this is True for anything, because the loopback
+    default has to work with zero setup - and because `create_app` refuses to
+    build an app bound anywhere but loopback in that state. The safety lives in
+    that refusal, not here: an open endpoint on a machine's own loopback
+    interface has no trust boundary to cross, while an open one on a network
+    does, and the network case is prevented from existing.
+
+    The moment a token *is* configured it is required, and compared with
+    `compare_digest` rather than `==`. A short-circuiting compare returns as soon
+    as it finds a difference, which leaks the secret one character at a time to
+    anyone able to time the response.
+    """
+    expected = configured_token()
+    if not expected:
+        return True
+    if not offered:
+        return False
+    return hmac.compare_digest(offered, expected)
+
+
+def _gate_health(active: Any | None) -> dict:
+    """Gate health, in the shape both the UI and the phone page read.
+
+    Split out of the endpoint so `gate=1` and `/api/gate/stats` cannot drift
+    into reporting different states for the same gate.
+    """
+    if active is None:
+        return {"gate": gate_status(), "available": False}
+    return {
+        "gate": gate_status(),
+        "available": active.available,
+        "mode": os.environ.get("ORVIMA_SENTINEL_MODE", "off"),
+    }
+
+
+def _require_token(request: Request) -> None:
+    """FastAPI dependency guarding the endpoints that act.
+
+    Applied to the endpoints that approve an irreversible action or drive the
+    browser directly - not to the read-only ones, because a phone on the other
+    side of a VPN still needs to see whether the server is up and what it is
+    waiting on.
+    """
+    offered = request.headers.get(TOKEN_HEADER)
+    if not offered:
+        authorization = request.headers.get("Authorization", "")
+        if authorization.lower().startswith("bearer "):
+            offered = authorization[7:].strip()
+    if not token_ok(offered):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "this endpoint acts on a real browser; present the API token in "
+                f"the {TOKEN_HEADER} header or as a bearer token"
+            ),
+        )
+
+
+def create_app(host: str = DEFAULT_HOST) -> FastAPI:
+    """Build the app, refusing a configuration that would expose it.
+
+    `host` is the interface the server will be reachable on. With no API token
+    configured the acting endpoints are open, which is right for loopback and
+    wrong for anything else - so building an app that will listen on a network
+    interface without a token is refused here rather than served.
+
+    The check is in `create_app` and not only in the CLI, because `create_app`
+    is what any other caller - a test, an embedder, a future entry point - gets.
+    A guard that lives in one launcher is a guard the next launcher forgets.
+    """
+    from .cli import is_loopback  # noqa: PLC0415 - cli imports api; avoid a cycle at module load
+
+    if not configured_token() and not is_loopback(host):
+        raise OrvimaError(
+            f"refusing to serve on {host or '(every interface)'} with no API "
+            "token: the approval endpoint would let anything on that network "
+            "approve actions in a real logged-in browser.\n"
+            "  set ORVIMA_API_TOKEN to a secret, or bind loopback "
+            "(host='127.0.0.1')."
+        )
+
     app = FastAPI(title="Orvima", version=__version__, docs_url="/docs")
     app.add_middleware(
         CORSMiddleware,
@@ -325,16 +427,51 @@ def create_app() -> FastAPI:
         rows = [t for t in sess.transcript if t["kind"] in ("summary", "error", "denied")]
         return {"ok": True, "status": sess.status, "done": True, "outcome": rows[-1] if rows else None}
 
+    # ------------------------------------------------------------ phone ----
+    @app.get("/phone", include_in_schema=False)
+    def phone():
+        """The approval queue, for a phone.
+
+        Read-only in the sense that it grants nothing: every button it shows
+        calls an endpoint that was already token-guarded. Serving it from orvima
+        keeps a purchase decision from depending on a third-party script.
+        """
+        from .phone import phone_page  # noqa: PLC0415 - keeps the page optional to import
+
+        return phone_page()
+
     # ------------------------------------------------------- approvals ----
     @app.get("/api/approvals")
-    def list_approvals(session_id: str | None = None) -> dict:
+    def list_approvals(
+        session_id: str | None = None,
+        gate: bool = Query(default=False),
+    ) -> dict:
+        """The pending approval queue.
+
+        `gate=1` includes gate health. Optional because the existing UI polls
+        this without it, and a parameter that changes the response shape should
+        be asked for rather than imposed.
+        """
         active = get_gate()
+        if active is None:
+            return {"ok": True, "approvals": [], "gate": "disabled"}
+        body = {"ok": True, "approvals": [r.public() for r in active.pending(session_id)]}
+        if gate:
+            body.update(_gate_health(active))
+        return body
         if active is None:
             return {"ok": True, "approvals": [], "gate": "disabled"}
         return {"ok": True, "approvals": [r.public() for r in active.pending(session_id)]}
 
-    @app.post("/api/approvals/{request_id}")
+    @app.post("/api/approvals/{request_id}", dependencies=[Depends(_require_token)])
     def answer_approval(request_id: str, body: Approval) -> dict:
+        """Resolve a pending approval.
+
+        Token-guarded because this is the endpoint that spends money. On
+        loopback with no token configured it stays open, which is the point of
+        the loopback default; `cli.check_bind` refuses to be reachable from
+        anywhere else unless a token is set.
+        """
         active = get_gate()
         if active is None:
             raise HTTPException(status_code=503, detail="sentinel gate disabled")
@@ -366,8 +503,10 @@ def create_app() -> FastAPI:
             "stats": active.snapshot_stats(),
         }
 
-    @app.post("/api/sessions/{session_id}/control")
+    @app.post("/api/sessions/{session_id}/control", dependencies=[Depends(_require_token)])
     def control(session_id: str, body: Control) -> dict:
+        # Guarded because `cancel` unblocks a run that is waiting on an approval,
+        # so an unguarded caller could drive the run's control flow remotely.
         sess = store.get(session_id)
         if body.action == "pause":
             sess.pause()
@@ -381,8 +520,14 @@ def create_app() -> FastAPI:
         return {"ok": True, "status": sess.status}
 
     # -------------------------------------------------------- direct tools ----
-    @app.post("/api/sessions/{session_id}/tools")
+    @app.post("/api/sessions/{session_id}/tools", dependencies=[Depends(_require_token)])
     def run_tool(session_id: str, body: ToolCall) -> dict:
+        """Run one browse tool directly.
+
+        Guarded for the same reason as the approval endpoint: this drives a real
+        logged-in browser, so an open version of it is an open version of the
+        account.
+        """
         sess = store.get(session_id)
         try:
             result = call_tool(sess.browser, body.tool, body.args)

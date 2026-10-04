@@ -4,7 +4,7 @@
 
 **Your browser, driven by any AI — with a live viewport you control.**
 
-Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) gets a full set of `browse_*` hands on **your own Chrome or Edge** — navigate, click, type, extract, verify, multi-tab — powered by your logins, running on your machine, while you watch every step in a live viewport and stop it whenever you like.
+Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) gets a full set of `browse_*` hands on **your own Chrome, Edge or Brave** — navigate, click, type, extract, verify, multi-tab — powered by your logins, running on your machine, while you watch every step in a live viewport and stop it whenever you like.
 
 ```
   any AI tool            MCP / stdio            +--------------------+
@@ -114,7 +114,7 @@ It will `browse_navigate`, `browse_snapshot`, and report back — verified, not 
 
 **Use your real browser (real mode):**
 
-Orvima launches **your installed Chrome or MS Edge** — visible, with a persistent profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday profile is never touched. Want it to drive the browser you already have open?
+Orvima launches **your installed Chrome, MS Edge or Brave** — visible, with a persistent profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday profile is never touched. Want it to drive the browser you already have open?
 
 ```bash
 orvima serve --mode real                                 # watch it work at :8301
@@ -152,11 +152,11 @@ If the endpoint answers but the handshake still stalls, attach fails fast rather
 than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
 `ORVIMA_TYPE_DELAY_MS` (default 0) sets per-character typing delay.
 
-`--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
+`--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
 
 > `--mode demo` = offline simulator (works everywhere, perfect for CI and tours)
 > `--mode real` = your own installed browser, streaming frames to the UI
-> flags: `--browser {chrome,msedge,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
+> flags: `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
 
 ---
 
@@ -217,7 +217,7 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 
 | piece | what |
 | --- | --- |
-| `src/orvima/browser.py` | `BrowserController` — your Chrome/Edge (persistent profile or CDP attach) with verify-first ops |
+| `src/orvima/browser.py` | `BrowserController` — your Chrome/Edge/Brave (persistent profile or CDP attach) with verify-first ops |
 | `src/orvima/cdp.py` | page-level CDP client — attaches to a single open tab's own socket, skipping the browser handshake that stalls on busy profiles |
 | `src/orvima/demo.py` | `DemoBrowser` — the same surface, scripted, offline, CI-friendly |
 | `src/orvima/tools.py` | the `browse_*` tools as plain dict-in/dict-out functions |
@@ -230,7 +230,7 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 ## Roadmap
 
 - [x] Core agent: 22 `browse_*` tools, verify-after-every-step loop
-- [x] Drives **your** installed Chrome/Edge (persistent profile) or attaches to a running browser over CDP
+- [x] Drives **your** installed Chrome/Edge/Brave (persistent profile) or attaches to a running browser over CDP
 - [x] Adaptive step-planner (snapshot → decide → act) with LLM / local-Ollama / MCP brains
 - [x] Classified recovery: transient failures get a second turn, irreversible ones never do
 - [x] Refs are element identities, not positions - they survive re-render and refuse on ambiguity
@@ -241,7 +241,7 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
 - [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (344 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
+- [x] CI + test suite (470 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Dashboard UI (watch the agent live, approve actions)
 - [ ] Media playback (file downloads are done: `browse_download`)

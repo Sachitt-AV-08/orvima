@@ -25,12 +25,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .backend import NavigationBackend
 from .errors import BrowserError
-from .expectations import (
-    DEFAULT_EXPECT_TIMEOUT_MS,
-    ExpectationChecker,
-    ExpectationSet,
-)
 from .identity import ElementIdentity, RefRegistry
 from .occlusion import uncover
 from .recovery import looks_irreversible
@@ -410,7 +406,7 @@ def detect_channel() -> str | None:
     return None
 
 
-class BrowserController:
+class BrowserController(NavigationBackend):
     """Owns a browser + one active page, over Playwright."""
 
     def __init__(
@@ -537,6 +533,20 @@ class BrowserController:
             self._pw = None
         self._context = None
         self.page = None
+
+    #: Playwright reports a real load state, so this backend states one.
+    REPORTS_LOAD_STATE = True
+
+    def _perform_navigate(self, url: str) -> None:
+        """The primitive NavigationBackend.navigate is written in terms of.
+
+        Named `_goto` historically because only this class called it. It is now
+        also how the shared navigate() reaches Playwright, so it is aliased
+        rather than wrapped: `_goto` returns the load state and is called on its
+        own during `start()` to reach the base url, where there is no
+        expectation to judge.
+        """
+        self._goto(url)
 
     def _goto(self, url: str) -> dict:
         self._require_open()
@@ -751,39 +761,10 @@ class BrowserController:
             return ""
 
     # ------------------------------------------------------ expectations ----
-    def _check_expectations(self, expect: dict, selector: str | None) -> dict:
-        """Judge an action against what the caller said it expected.
-
-        Returns a dict to merge into the tool result. It is **empty** when the
-        caller stated no expectation, not a passing report: adding keys
-        (``expectationsMet`` and friends) to every result would make a feature
-        nobody asked for part of the contract every caller has to read.
-
-        An unmet expectation raises. The caller asked for a specific outcome;
-        getting something else means the action did not do what was intended,
-        and a flag that a caller may ignore is how verification becomes theatre.
-        """
-        wanted = ExpectationSet(
-            url=expect.get("expect_url"),
-            text=expect.get("expect_text"),
-            count=expect.get("expect_count"),
-            count_target=expect.get("expect_for"),
-            timeout_ms=expect.get("expect_timeout_ms", DEFAULT_EXPECT_TIMEOUT_MS),
-        )
-        if not wanted.any_given():
-            return {}
-
-        report = ExpectationChecker(self._read_page_state, self._count_matching).check(
-            wanted, selector
-        )
-        if not report.passed:
-            raise BrowserError(
-                f"the action completed but {report.failure_message()}. "
-                "The page may have gone somewhere other than intended - check "
-                "where you actually are before continuing"
-            )
-        return report.summary()
-
+    # `_check_expectations` is not defined here. It lives in NavigationBackend,
+    # alongside `navigate`, because it was on this class alone for long enough
+    # that the other two backends shipped without it - and one of them is the
+    # harness the benchmark measures the agent through. See orvima/backend.py.
     def _read_page_state(self) -> dict:
         """Url and visible text, for expectation polling."""
         try:
@@ -825,17 +806,10 @@ class BrowserController:
             return None
 
     # ------------------------------------------------------------- actions ----
-    def navigate(self, url: str, **expect) -> dict:
-        self._goto(url)
-        report = self._check_expectations(expect, None)
-        return {
-            **self._state(),
-            "load_state": "domcontentloaded",
-            "verified": True,
-            **report,
-        }
+    # `navigate` and `click` are inherited from NavigationBackend, which owns
+    # both the action and the judgement of it.
 
-    def click(self, selector: str, **expect) -> dict:
+    def _perform_click(self, selector: str) -> dict:
         self._require_open()
         selector = self._guard_ref(selector)
         target = self._target(selector)
@@ -868,12 +842,7 @@ class BrowserController:
                 + (f" {moved['reason']}" if moved.get("reason") else "")
             ) from exc
         after_sig = self._dom_signature()
-        verified = before_sig != after_sig
-        # Expectations are judged against the acted-on selector, before the
-        # ref-to-selector rewrite, so expect_count counts what the caller aimed
-        # at rather than an attribute selector.
-        report = self._check_expectations(expect, selector)
-        return {**self._state(), "verified": verified, **report}
+        return {**self._state(), "verified": before_sig != after_sig}
 
     def _refuse_if_unreachable(self, selector: str, action: str, moved: dict) -> None:
         """Fail fast when the probe has already proved the element is unreachable.

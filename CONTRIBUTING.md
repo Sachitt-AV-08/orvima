@@ -40,7 +40,7 @@ uv run orvima demo     # try the offline tour
 
 | Module | Responsibility |
 |--------|----------------|
-| `src/orvima/browser.py` | BrowserController — Chrome/Edge with verify-first ops |
+| `src/orvima/browser.py` | BrowserController - Chrome/Edge/Brave with verify-first ops |
 | `src/orvima/demo.py` | DemoBrowser — offline simulator for CI/demos |
 | `src/orvima/tools.py` | `browse_*` tools as pure dict-in/dict-out functions |
 | `src/orvima/planner.py` | `LLMPlanner` + `DemoPlanner` (adaptive step-planner) |
