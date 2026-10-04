@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orvima — your browser, driven by any AI</title>
+<meta name="description" content="Self-hosted, local-first browser agent. 21 browse_* MCP tools for Claude, Cursor, Copilot or your own agent. Your logins, your machine, live viewport.">
+<meta property="og:title" content="Orvima — your browser, driven by any AI">
+<meta property="og:description" content="Self-hosted, local-first browser agent with a live viewport you control.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://orvima.in">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <nav>
+    <a class="brand" href="/">orvima</a>
+    <div class="navlinks">
+      <a href="#why">Why</a>
+      <a href="#tools">Tools</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+  <section class="hero">
+    <p class="eyebrow">v0.1.4 &middot; MIT &middot; local-first</p>
+    <h1>Your browser,<br>driven by any AI.</h1>
+    <p class="lede">
+      Orvima gives any MCP-capable AI &mdash; Claude, Cursor, Copilot, or your own agent &mdash;
+      full hands on <strong>your own Chrome, Edge or Brave</strong>. Your logins. Your machine.
+      A live viewport where you watch every step and stop it whenever you like.
+    </p>
+
+    <div class="cta">
+      <a class="btn primary" href="#install">Install in 30 seconds</a>
+      <a class="btn" href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">View source</a>
+    </div>
+
+    <div class="installbox">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-os="win" role="tab">Windows</button>
+        <button class="tab" data-os="unix" role="tab">macOS / Linux</button>
+      </div>
+      <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
+    </div>
+
+    <p class="note">No cloud. No API key. No account. Try it offline first: <code>orvima demo</code></p>
+  </section>
+
+  <section class="arch">
+    <div class="box">
+      <span>any AI tool</span>
+      <em>Claude &middot; Copilot &middot; Cursor &middot; your agent</em>
+    </div>
+    <span class="link">MCP / stdio &rarr;</span>
+    <div class="box accent">
+      <span>Orvima</span>
+      <em>localhost</em>
+    </div>
+    <span class="link">&rarr;</span>
+    <div class="box">
+      <span>YOUR browser</span>
+      <em>your logins &middot; live viewport &middot; pause / approve</em>
+    </div>
+  </section>
+
+  <section id="why">
+    <h2>The three things that actually matter</h2>
+    <div class="grid three">
+      <article>
+        <h3>Live viewport</h3>
+        <p>See exactly what the agent sees. Frames stream in real time over SSE, so you are never guessing what it is looking at.</p>
+      </article>
+      <article>
+        <h3>Human in the loop</h3>
+        <p>Pause or resume a run at any point. An optional fail-closed approval gate holds risky actions for a human before they fire.</p>
+      </article>
+      <article>
+        <h3>Verified steps</h3>
+        <p>Every action confirms the DOM result before the agent proceeds. No silent failures, no guessed success.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="tools">
+    <h2>21 <code>browse_*</code> tools</h2>
+    <p class="section-lede">Everything runs on <code>127.0.0.1</code>. Your cookies, sessions and scrapes never leave your computer. Bring your own brain &mdash; any OpenAI-compatible model, or your MCP client.</p>
+    <div class="chips">
+      <span>browse_navigate</span>
+      <span>browse_click</span>
+      <span>browse_type</span>
+      <span>browse_fill</span>
+      <span>browse_select</span>
+      <span>browse_press</span>
+      <span>browse_hover</span>
+      <span>browse_scroll</span>
+      <span>browse_snapshot</span>
+      <span>browse_screenshot</span>
+      <span>browse_extract</span>
+      <span>browse_eval</span>
+      <span>browse_wait</span>
+      <span>browse_wait_for</span>
+      <span>browse_download</span>
+      <span>browse_set_files</span>
+      <span>browse_open_tab</span>
+      <span>browse_switch_tab</span>
+      <span>browse_list_tabs</span>
+      <span>browse_close_tab</span>
+      <span>browse_go_back</span>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Get started</h2>
+    <div class="grid two">
+      <article>
+        <h3>Try it with no setup</h3>
+        <p>Runs against a built-in simulator. No browser, no internet, no keys.</p>
+        <pre><code>orvima run "send a message to Acme support"</code></pre>
+      </article>
+      <article>
+        <h3>Point your AI at it</h3>
+        <p>Copy the exact MCP config for Claude Desktop, Cursor, or Copilot from the README.</p>
+        <pre><code>git clone https://github.com/Sachitt-AV-08/orvima
+cd orvima &amp;&amp; uv sync</code></pre>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Orvima is free and MIT licensed. Self-hosted, local-first, and yours.</p>
+  <p class="small">
+    <a href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">Source</a>
+    &middot; <a href="mailto:sachitt@orvima.in">sachitt@orvima.in</a>
+  </p>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>
