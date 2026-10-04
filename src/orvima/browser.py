@@ -131,6 +131,15 @@ _BROWSER_PATHS = {
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     ),
+    # Brave is Chromium, so it speaks CDP and drives through the same code path
+    # as Chrome and Edge. It is listed here rather than left to autodetection
+    # because `--browser brave` was rejected by argparse's `choices`, which meant
+    # the documented way to select it could not be used at all.
+    "brave": (
+        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe",
+    ),
 }
 
 #: Walks a document *and* its open shadow roots and same-origin frames, so a
@@ -386,12 +395,17 @@ def _frame_is_readable(frame, data: dict) -> bool:
 
 
 def detect_channel() -> str | None:
-    """Return 'chrome', 'msedge', or None (use bundled chromium)."""
+    """Return 'chrome', 'msedge', 'brave', or None (use bundled chromium)."""
     env = (os.environ.get("ORVIMA_BROWSER") or "").strip().lower()
-    if env in ("chrome", "msedge", "chromium"):
+    if env in ("chrome", "msedge", "brave", "chromium"):
         return None if env == "chromium" else env
     for name, candidates in _BROWSER_PATHS.items():
-        if sys.platform == "win32" and any(Path(p).exists() for p in candidates):
+        if sys.platform == "win32" and any(
+            # expandvars, because a per-user install path is written with
+            # %LOCALAPPDATA% and Path(...).exists() does not expand it - the
+            # entry would look present in the table and never match on disk.
+            Path(os.path.expandvars(p)).exists() for p in candidates
+        ):
             return name
     return None
 

@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=f"orvima {__version__}")
     # Global browser flags (work with any subcommand)
-    parser.add_argument("--browser", default=None, choices=["chrome", "msedge", "chromium"],
+    parser.add_argument("--browser", default=None, choices=["chrome", "msedge", "brave", "chromium"],
                         help="default: autodetect your installed Chrome/Edge")
     parser.add_argument("--attach", default=None, metavar="CDP_URL",
                         help="drive an already-running browser, e.g. http://127.0.0.1:9222")
