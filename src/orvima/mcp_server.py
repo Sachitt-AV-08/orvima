@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+from typing import Any
 
 from . import tool_annotations, tools
 from .agent import SessionStore
@@ -43,25 +44,36 @@ def _annotations_for(tool_name: str):
     )
 
 
-def run(demo: bool = True, name: str = "orvima") -> int:
-    """Build a session + MCP server and serve on stdio. Blocks until stdin closes."""
-    sess = SessionStore().create(mode="demo" if demo else "real")
-    server = _server_class()(name)
+def register_tools(server: Any, sess: Any) -> bool:
+    """Register every tool on `server`. Returns whether hints were attached.
 
+    Split out of `run()` so a test can exercise the exact registration path
+    instead of a copy of it. A test that rebuilds the loop itself proves only
+    that the copy works: the original m8ven finding was that the table was
+    correct and the registration silently dropped it.
+    """
     # Probe whether this SDK generation accepts annotations at all.
     supports_annotations = "annotations" in inspect.signature(server.tool).parameters
 
     for fn in tools.TOOLS:
         tool_name = fn.__name__[5:]
         bound = _bind(sess, fn)
-        kwargs = {"name": tool_name, "description": _doc(fn)}
+        kwargs: dict[str, Any] = {"name": tool_name, "description": _doc(fn)}
         if supports_annotations:
             annotations = _annotations_for(tool_name)
             if annotations is not None:
                 kwargs["annotations"] = annotations
         server.tool(**kwargs)(bound)
 
-    if not supports_annotations:
+    return supports_annotations
+
+
+def run(demo: bool = True, name: str = "orvima") -> int:
+    """Build a session + MCP server and serve on stdio. Blocks until stdin closes."""
+    sess = SessionStore().create(mode="demo" if demo else "real")
+    server = _server_class()(name)
+
+    if not register_tools(server, sess):
         print(
             "orvima: this mcp SDK predates tool annotations, so readOnlyHint "
             "and destructiveHint are absent. Install mcp>=2 to get them.",

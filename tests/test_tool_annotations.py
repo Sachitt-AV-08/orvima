@@ -91,6 +91,69 @@ def test_the_server_actually_passes_annotations_to_the_sdk() -> None:
     assert mcp_server._annotations_for("browse_snapshot").read_only_hint is True
 
 
+def _advertised(server) -> dict:
+    """What the server would actually send a host: name -> wire annotations."""
+    import asyncio
+
+    listed = asyncio.run(server.list_tools())
+    return {
+        t.name: (t.annotations.model_dump(by_alias=True) if t.annotations else None)
+        for t in listed
+    }
+
+
+def test_every_advertised_tool_carries_all_four_hints_on_the_wire() -> None:
+    """The guarantee that actually matters, checked where a host reads it.
+
+    Everything else in this file inspects `tool_annotations` or the SDK
+    signature. That is one layer above where a host sees the value, and it is
+    exactly the gap this test was written to close: during development every
+    check here passed while a separate probe reported all four hints missing,
+    because `ToolAnnotations` stores snake_case fields (`read_only_hint`) and
+    serialises to camelCase aliases (`readOnlyHint`). A test that reads the
+    field names it guessed would have repeated the mistake instead of catching
+    it.
+
+    So this registers through the production path - `register_tools`, the same
+    function `run()` calls - and inspects the advertised payload with the
+    aliases the MCP spec defines.
+    """
+    from orvima import mcp_server
+    from orvima.agent import SessionStore
+
+    WIRE = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
+
+    sess = SessionStore().create(mode="demo")
+    server = mcp_server._server_class()("probe")
+    assert mcp_server.register_tools(server, sess), (
+        "the installed mcp SDK has no annotations parameter, so every hint is "
+        "dropped and the listing stays unannotated"
+    )
+
+    advertised = _advertised(server)
+
+    assert set(advertised) == set(NAMES), (
+        f"the server advertises a different tool set than tools.TOOLS: "
+        f"advertised={sorted(advertised)} expected={sorted(NAMES)}"
+    )
+
+    problems = []
+    for name, wire in advertised.items():
+        if wire is None:
+            problems.append(f"{name}: advertised with no annotations at all")
+            continue
+        for hint in WIRE:
+            if hint not in wire:
+                problems.append(f"{name}: {hint} absent from the advertised payload")
+            elif not isinstance(wire[hint], bool):
+                problems.append(f"{name}: {hint}={wire[hint]!r} is not a boolean")
+
+    assert not problems, (
+        "tools advertised without all four explicit boolean hints:\n  "
+        + "\n  ".join(problems)
+    )
+
+
 # ------------------------------------------------------ truthfulness checks ----
 
 # Tools that only observe. If one of these is ever marked as able to act, a
