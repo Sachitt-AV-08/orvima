@@ -16,7 +16,7 @@ import inspect
 from . import tools
 from .agent import SessionStore
 
-HIDDEN = ("session", "browser")
+HIDDEN = ("session", "browser", "_args", "_kw")
 
 
 def run(demo: bool = True, name: str = "orvima") -> int:
@@ -29,11 +29,15 @@ def run(demo: bool = True, name: str = "orvima") -> int:
 
     import asyncio  # noqa: PLC0415
 
-    from mcp.server.stdio import stdio_server  # noqa: PLC0415
-
     async def _serve() -> None:
-        async with stdio_server() as (read, write):
-            await server.run(read, write, server.create_initialization_options())
+        if hasattr(server, 'create_initialization_options'):
+            # mcp < 2.0 (FastMCP)
+            from mcp.server.stdio import stdio_server  # noqa: PLC0415
+            async with stdio_server() as (read, write):
+                await server.run(read, write, server.create_initialization_options())
+        else:
+            # mcp >= 2.0 (MCPServer) - run_stdio_async handles stdio internally
+            await server.run_stdio_async()
 
     asyncio.run(_serve())
     return 0
