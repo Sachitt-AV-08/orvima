@@ -40,6 +40,14 @@ dev = [
 [project.scripts]
 orvima = "orvima.cli:main"
 
+# Without these the package metadata carries no home for the source, and index
+# scrapers fall back to "install from GitHub" with nothing to count. M8ven reads
+# `install_count` from the index; it was null because orvima was never published.
+[project.urls]
+Homepage = "https://github.com/Sachitt-AV-08/orvima"
+Repository = "https://github.com/Sachitt-AV-08/orvima"
+Issues = "https://github.com/Sachitt-AV-08/orvima/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/orvima"]
 

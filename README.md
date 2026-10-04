@@ -1,5 +1,7 @@
 # Orvima
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/sachitt-av-08/orvima)](https://m8ven.ai/mcp/sachitt-av-08/orvima?s=readme)
+
 **Your browser, driven by any AI — with a live viewport you control.**
 
 Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) gets a full set of `browse_*` hands on **your own Chrome or Edge** — navigate, click, type, extract, verify, multi-tab — powered by your logins, running on your machine, while you watch every step in a live viewport and stop it whenever you like.
