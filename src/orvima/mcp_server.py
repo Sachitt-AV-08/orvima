@@ -12,20 +12,61 @@ default; ``--mode real`` drives a live Chromium you control).
 from __future__ import annotations
 
 import inspect
+import sys
 
-from . import tools
+from . import tool_annotations, tools
 from .agent import SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
+
+
+def _annotations_for(tool_name: str):
+    """Build `ToolAnnotations` for a tool, or None if this SDK lacks them.
+
+    The four hints are mandatory for OpenAI's MCP directory and are what let a
+    host warn a user before an action spends money. mcp 1.x had no annotations
+    parameter, so the registration below probes once and falls back rather than
+    pinning the project to one SDK generation.
+    """
+    try:
+        from mcp.types import ToolAnnotations  # noqa: PLC0415
+    except ImportError:
+        return None
+
+    b = tool_annotations.for_tool(tool_name)
+    return ToolAnnotations(
+        title=tool_name.replace("_", " "),
+        read_only_hint=b.read_only,
+        destructive_hint=b.destructive,
+        idempotent_hint=b.idempotent,
+        open_world_hint=b.open_world,
+    )
 
 
 def run(demo: bool = True, name: str = "orvima") -> int:
     """Build a session + MCP server and serve on stdio. Blocks until stdin closes."""
     sess = SessionStore().create(mode="demo" if demo else "real")
     server = _server_class()(name)
+
+    # Probe whether this SDK generation accepts annotations at all.
+    supports_annotations = "annotations" in inspect.signature(server.tool).parameters
+
     for fn in tools.TOOLS:
+        tool_name = fn.__name__[5:]
         bound = _bind(sess, fn)
-        server.tool(name=fn.__name__[5:], description=_doc(fn))(bound)
+        kwargs = {"name": tool_name, "description": _doc(fn)}
+        if supports_annotations:
+            annotations = _annotations_for(tool_name)
+            if annotations is not None:
+                kwargs["annotations"] = annotations
+        server.tool(**kwargs)(bound)
+
+    if not supports_annotations:
+        print(
+            "orvima: this mcp SDK predates tool annotations, so readOnlyHint "
+            "and destructiveHint are absent. Install mcp>=2 to get them.",
+            file=sys.stderr,
+        )
 
     import asyncio  # noqa: PLC0415
 

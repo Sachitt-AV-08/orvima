@@ -389,18 +389,62 @@ class TestWhatTheDocsClaim:
             encoding="utf-8"
         )
         assert "read-only mode by default" not in security.lower()
-        # Guard the claim in code, not just in prose: no read-only flag exists.
+
+        # Guard the claim in code, not just in prose.
+        #
+        # The claim is that there is no read-only *mode*: no way to run orvima so
+        # that it cannot act. An MCP `readOnlyHint` is not that. It is metadata
+        # describing what a tool does, which lets a host warn a user before
+        # invoking it; orvima does not enforce it and gains no restriction from
+        # it. m8ven's review asked for all four hints on every tool, and OpenAI's
+        # MCP directory rejects a tool missing any of them, so the distinction
+        # matters in both directions: the hint must exist, and SECURITY.md must
+        # not start implying it protects anything.
+        #
+        # What must NOT appear is an enforced restriction - a flag, a mode, or a
+        # gate that actually blocks a write.
         package = Path(__file__).resolve().parent.parent / "src" / "orvima"
-        hits = [
-            f.name
-            for f in package.glob("*.py")
-            if "read_only" in f.read_text(encoding="utf-8")
-            and "read-only where possible" not in f.read_text(encoding="utf-8")
-        ]
-        assert not hits, (
-            f"{hits} now mention read_only; SECURITY.md asserts no such mode "
-            "exists, so one of the two is wrong and it should be resolved in code"
+        enforced = []
+        for f in package.glob("*.py"):
+            text = f.read_text(encoding="utf-8")
+            if "read_only" not in text:
+                continue
+            for line in text.splitlines():
+                low = line.lower()
+                if "read_only_hint" in low or "readonlyhint" in low:
+                    continue  # the MCP annotation, which is descriptive only
+                if any(
+                    token in low
+                    for token in ("read_only_mode", "--read-only", "--readonly", "read_only=True")
+                ):
+                    enforced.append(f"{f.name}: {line.strip()}")
+        assert not enforced, (
+            "an enforced read-only restriction now exists; SECURITY.md says "
+            f"there is none, so one of the two is wrong: {enforced}"
         )
+
+    def test_the_read_only_hint_is_metadata_and_not_a_restriction(self):
+        """The other half of the claim above, asserted directly.
+
+        `readOnlyHint` exists so a host can warn before a tool runs. If it ever
+        started gating the call itself, orvima would have a read-only mode and
+        SECURITY.md would be wrong - so this pins that the annotation is only
+        ever handed to the MCP server, never consulted to allow or deny.
+        """
+        package = Path(__file__).resolve().parent.parent / "src" / "orvima"
+        server = (package / "mcp_server.py").read_text(encoding="utf-8")
+        assert "read_only_hint=b.read_only" in server, (
+            "the hint should be passed through to the SDK as metadata"
+        )
+        # No call site anywhere decides on it.
+        for f in package.glob("*.py"):
+            for line in f.read_text(encoding="utf-8").splitlines():
+                low = line.lower()
+                if "read_only" not in low or "read_only_hint" in low or "readonlyhint" in low:
+                    continue
+                assert "if " not in low or "read_only" not in low.split("if ")[1][:12], (
+                    f"{f.name} appears to branch on read_only: {line.strip()}"
+                )
 
     def test_security_md_does_not_claim_file_dialogs_are_unsupported(self):
         """`browse_set_files` shipped; the native OS picker still is not driven."""
