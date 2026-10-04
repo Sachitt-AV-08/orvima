@@ -83,6 +83,16 @@ class _RefusingGate:
         self._result = _RefusingResult()
         self._result.reason = f"{self._why}; refusing to auto-approve"
 
+    @property
+    def available(self) -> bool:
+        """False: this stands in for a gate that could not be built.
+
+        `/api/gate/stats` reads it, so its absence crashed that endpoint with an
+        `AttributeError` - the health check meant to explain a safe-but-degraded
+        install was itself the thing that broke.
+        """
+        return False
+
     def check(self, tool, args=None, **_kw):
         return self._result
 
@@ -100,6 +110,23 @@ class _RefusingGate:
 
     def pending(self, session_id=None):
         return []
+
+    def lapsed(self, request_id) -> bool:
+        """Always True: a request this gate issued can never be answered.
+
+        `Agent._await_approval` calls `lapsed()` before it inspects `pending()`,
+        because leaving the queue is ambiguous - `resolve()` pops a request too,
+        so an answered one looks like a dropped one. This gate has no queue and
+        no way to record an answer, so every request it hands out is dropped by
+        definition.
+
+        Without this method the waiting loop raised `AttributeError` on the
+        first gated action and the whole run died with a 502 - so the default
+        install, the one with no sentinel, could not fail closed at all. It
+        crashed instead. Returning True makes the loop refuse immediately, which
+        is the entire point of this class.
+        """
+        return True
 
     def resolve(self, request_id, approved):
         return None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from orvima.demo import DemoBrowser
@@ -267,6 +269,16 @@ def test_api_sessions_and_goal(monkeypatch):
     from orvima import __version__
     from orvima.api import app
 
+    # This asserts the sessions/goal API contract for a run that *completes*,
+    # not what the gate decides. A default install has no sentinel, and the gate
+    # is then fail-closed: it holds every action for a human, so `wait=true`
+    # returns the `timed_out` envelope with no `summary`. That is why this failed
+    # in CI on every platform while passing on any machine that happened to have
+    # sentinel installed. Gating off is a documented operator choice, and it is
+    # the only way to make "the run finished" a statement about the API rather
+    # than about whoever's machine is running it.
+    monkeypatch.setenv("ORVIMA_SENTINEL", "off")
+
     client = TestClient(app)
     health = client.get("/api/health").json()
     assert health["ok"] is True and health["version"] == __version__
@@ -282,7 +294,67 @@ def test_api_sessions_and_goal(monkeypatch):
     ran = client.post(
         f"/api/sessions/{sid}/goal",
         json={"goal": "list products"},
-        params={"wait": True, "timeout": 30},
+        params={"wait": True, "timeout": 60},
     ).json()
-    assert ran["ok"] is True and ran["summary"]
+    assert ran["ok"] is True and ran["summary"], ran
     # cleanup handled per-process; no real browser is ever launched here
+
+
+def test_a_run_with_no_classifier_is_held_for_a_human_not_handed_back(monkeypatch):
+    """The default install's real contract, which CI had never tested.
+
+    Without sentinel the gate is fail-closed, and the thing it must not do is
+    quietly behave like an approved run: an action nobody can judge has to wait
+    for a person. This is the behaviour that made the test above environment
+    dependent, and it is what a plain `pip install orvima` actually does.
+
+    Simulated by making gate construction fail, which is how a missing optional
+    dependency presents at runtime. Asserting the *held* outcome is what makes
+    this a contract test rather than a restatement of the CI failure.
+    """
+    from fastapi.testclient import TestClient
+
+    from orvima import api, sentinel_gate
+    from orvima.api import app
+
+    monkeypatch.delenv("ORVIMA_SENTINEL", raising=False)
+    monkeypatch.setattr(api, "_gate", None, raising=False)
+
+    def no_classifier(*_a, **_k):
+        raise ImportError("No module named 'sentinel'")
+
+    monkeypatch.setattr(sentinel_gate, "make_gate", no_classifier)
+
+    client = TestClient(app)
+    created = client.post("/api/sessions", json={"mode": "demo", "goal": "products"}).json()
+    sid = created["session"]["id"]
+
+    started = time.monotonic()
+    response = client.post(
+        f"/api/sessions/{sid}/goal",
+        json={"goal": "list products"},
+        params={"wait": True, "timeout": 30},
+    )
+    elapsed = time.monotonic() - started
+
+    # It must refuse, and say why. Not complete, not hang, and above all not
+    # crash: before `lapsed()` existed, the first gated action raised
+    # AttributeError and the default install could not fail closed at all.
+    assert response.status_code == 502, response.text
+    detail = response.json()["detail"]
+    assert detail["denied"] is True, detail
+    assert "not approved" in detail["summary"], detail
+
+    # Promptly. Waiting out the full timeout is indistinguishable from being
+    # stuck, and the caller waits 30s for a refusal that was decided instantly.
+    assert elapsed < 5, f"the refusal took {elapsed:.1f}s; it should be immediate"
+
+    # And the health endpoint must be able to explain the state. It reads
+    # `gate.available`, which `_RefusingGate` never defined - so the endpoint
+    # whose whole job is reporting a safe-but-degraded install was itself
+    # raising AttributeError.
+    stats = client.get("/api/gate/stats", params={"rebuild": "true"}).json()
+    assert stats["ok"] is True
+    assert stats["available"] is False, stats
+    assert stats["gate"] == "degraded", stats
+    assert "sentinel" in stats["stats"]["reason"], stats

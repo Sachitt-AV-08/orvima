@@ -42,6 +42,10 @@ jobs:
         run: uv build
       - name: Smoke test wheel
         run: |
-          pip install dist/*.whl[mcp]
+          # Resolve the wheel first: `dist/*.whl[mcp]` fails because bash globs the
+          # whole word, so `[mcp]` is read as a character class matching nothing
+          # and pip is handed the literal string.
+          WHEEL=$(ls dist/*.whl | head -1)
+          pip install "${WHEEL}[mcp]"
           orvima --version
           orvima doctor --help
