@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="orvima concept B, a tab-eye">
+  <title>Concept B - a tab-eye</title>
+  <g fill="none" stroke="#F5A524" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.9 7.4 a2.6 2.6 0 0 1 2.6 -2.6 h4.1 a2.6 2.6 0 0 1 2.6 2.6 v10.1 a2.6 2.6 0 0 1 -2.6 2.6 h-9.3 a2.6 2.6 0 0 1 -2.6 -2.6 z"/>
+    <path d="M8.1 4.8 L8.1 7.4"/>
+  </g>
+  <g fill="none" stroke="#F5A524" stroke-width="2.1" stroke-linecap="round">
+    <path d="M7.6 13.1 a4.0 4.0 0 0 1 6.8 0"/>
+    <path d="M7.6 13.1 a4.0 4.0 0 0 0 6.8 0"/>
+  </g>
+  <circle cx="11" cy="13.1" r="1.7" fill="#F5A524"/>
+</svg>

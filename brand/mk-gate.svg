@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2.0 -2.0 104 104" width="104" height="104" role="img" aria-label="orvima mark, v in an open gate">
+  <title>orvima mark, v in an open gate</title>
+  <g fill="none" stroke="#F5A524" stroke-width="9.0" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M18 40 L18 18 L40 18"/>
+    <path d="M62 18 L82 18 L82 38"/>
+    <path d="M82 62 L82 82 L62 82"/>
+    <path d="M40 82 L18 82 L18 62"/>
+  </g>
+  <g fill="#F5A524" fill-rule="nonzero">
+    <path d="M2 1062H426L632 389L845 1062H1256L805 0H444Z" transform="translate(22.7552 68.0000) scale(0.04331 -0.04331)"/>
+  </g>
+</svg>

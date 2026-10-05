@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2.0 -2.0 104 104" width="104" height="104" role="img" aria-label="orvima mark, v in corner brackets">
+  <title>orvima mark, v in corner brackets</title>
+  <g fill="none" stroke="#F5A524" stroke-width="9.0" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M16 38 L16 16 L38 16"/>
+    <path d="M62 16 L84 16 L84 38"/>
+    <path d="M84 62 L84 84 L62 84"/>
+    <path d="M38 84 L16 84 L16 62"/>
+  </g>
+  <g fill="#F5A524" fill-rule="nonzero">
+    <path d="M2 1062H426L632 389L845 1062H1256L805 0H444Z" transform="translate(23.9397 66.0000) scale(0.04143 -0.04143)"/>
+  </g>
+</svg>
