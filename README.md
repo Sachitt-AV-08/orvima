@@ -42,16 +42,25 @@ irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | ie
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh
 
-orvima demo                        # offline tour — try everything, zero setup
+orvima serve                       # local UI + API at http://127.0.0.1:8301
+orvima demo                        # offline tour on a simulated site, zero setup
 ```
 
-**Try it headlessly first — no browser, no internet, no keys:**
+**No browser, no internet, no keys — try the offline tour:**
 
 ```bash
-orvima run "send a message to Acme support"
+orvima run "send a message to Acme support" --mode demo
 ```
 
-That goal gets planned, executed step by step against Orvima's built-in simulator, and every step is confirmed before the next one starts.
+That goal gets planned, executed step by step against Orvima's built-in simulator, and every step is confirmed before the next one starts. Add `--mode demo` anywhere to stay there.
+
+**Against a real browser, no flag needed:**
+
+```bash
+orvima run "summarize the top story on hacker news"
+```
+
+orvima drives a browser you own and can watch. Autonomous runs in real mode need an LLM — set `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` (any OpenAI-compatible endpoint, including local Ollama) — or just drive it through MCP and let your assistant be the brain.
 
 **Plug your AI into it (MCP):**
 
@@ -64,7 +73,7 @@ Copy the exact config for your client:
   "mcpServers": {
     "orvima": {
       "command": "orvima",
-      "args": ["mcp", "--mode", "demo"],
+      "args": ["mcp"],
       "type": "stdio"
     }
   }
@@ -74,7 +83,7 @@ Copy the exact config for your client:
 **Claude Code** (add to your project or global config):
 
 ```bash
-claude mcp add orvima orvima mcp --mode demo
+claude mcp add orvima orvima mcp
 ```
 
 **Cursor** (`.cursor/mcp.json` in your project root):
@@ -84,7 +93,7 @@ claude mcp add orvima orvima mcp --mode demo
   "mcpServers": {
     "orvima": {
       "command": "orvima",
-      "args": ["mcp", "--mode", "demo"],
+      "args": ["mcp"],
       "type": "stdio"
     }
   }
@@ -99,7 +108,7 @@ claude mcp add orvima orvima mcp --mode demo
     "servers": {
       "orvima": {
         "command": "orvima",
-        "args": ["mcp", "--mode", "demo"],
+        "args": ["mcp"],
         "type": "stdio"
       }
     }
@@ -107,19 +116,19 @@ claude mcp add orvima orvima mcp --mode demo
 }
 ```
 
-Use `--mode real` instead of `--mode demo` to drive your real browser (requires `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` for autonomous runs).
+These configs start a real browser — that is the default, so there is no `--mode` flag to get wrong. Add `--mode demo` if you specifically want the offline simulator.
 
 Then just tell your assistant things like
 *"open the top hacker news story and summarize the comments"*.
 It will `browse_navigate`, `browse_snapshot`, and report back — verified, not guessed.
 
-**Use your real browser (real mode):**
+**The real browser (this is the default):**
 
 Orvima launches **your installed Chrome, MS Edge or Brave** — visible, with a persistent profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday profile is never touched. Want it to drive the browser you already have open?
 
 ```bash
-orvima serve --mode real                                 # watch it work at :8301
-orvima run --mode real "compare prices on two flights"   # autonomous, needs a brain
+orvima serve                                            # watch it work at :8301
+orvima run "compare prices on two flights"               # autonomous, needs a brain
 ```
 
 For autonomous `orvima run`, give it a brain — any OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, or **local Ollama**):
@@ -132,7 +141,7 @@ export ORVIMA_LLM_KEY=sk-…                          # ORVIMA_LLM_MODEL=llama3.
 Attach to a browser you already have running (parley-style, over CDP):
 
 ```bash
-orvima --attach http://127.0.0.1:9222 mcp --mode real
+orvima --attach http://127.0.0.1:9222 mcp
 ```
 
 Start that browser with `--remote-debugging-port=<port>` to expose the endpoint.
@@ -146,7 +155,7 @@ that enumeration and returns in milliseconds:
 
 ```bash
 export ORVIMA_ATTACH_TAB=linkedin.com    # substring of the tab url or title
-orvima --attach http://127.0.0.1:9335 mcp --mode real
+orvima --attach http://127.0.0.1:9335 mcp
 ```
 
 If the endpoint answers but the handshake still stalls, attach fails fast rather
@@ -155,8 +164,8 @@ than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
 
 `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
 
-> `--mode demo` = offline simulator (works everywhere, perfect for CI and tours)
-> `--mode real` = your own installed browser, streaming frames to the UI
+> `--mode demo` = offline simulator, opt-in. Perfect for CI and tours.
+> no flag = your own installed browser, streaming frames to the UI (the default)
 > flags: `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
 
 ---

@@ -26,13 +26,16 @@ def _out(obj: dict) -> None:
 
 def cmd_demo() -> int:
     print(
-        "orvima demo: offline tour — no Chrome, no internet, no keys.\n"
-        "  orvima run \"send a message to Acme support\"\n"
-        "  orvima mcp           (demo browser; add to any MCP client)\n"
+        "orvima demo: offline tour - no Chrome, no internet, no keys.\n"
+        "This is the simulated site, and it is opt-in. orvima runs against a real\n"
+        "browser by default, so nothing here is a preview of what your AI sees.\n"
+        "\nTo try it:\n"
+        "  orvima run \"send a message to Acme support\" --mode demo\n"
+        "  orvima mcp --mode demo        (add to any MCP client)\n"
         "  orvima serve --mode demo\n"
-        "\nReal mode (a live Chromium you watch):\n"
-        "  orvima serve --mode real\n"
-        "  orvima run \"summarize the top story on hackernews\" --mode real"
+        "\nReal mode (the default - a live Chromium you watch):\n"
+        "  orvima serve\n"
+        "  orvima run \"summarize the top story on hackernews\""
     )
     return 0
 
@@ -180,8 +183,15 @@ def resolve_mode(mode: str | None) -> str:
     """Which mode this invocation will actually run in.
 
     One function, so `doctor` cannot disagree with the commands it checks.
+
+    The default is `real`. It used to be `demo`, and that default was the whole
+    problem: `orvima mcp` with no flags served a scripted acme.dev and answered
+    `{"ok": true}` about it, so a client could be told it had read a website no
+    browser ever opened. The offline tour is still there and still one command
+    away -- `orvima demo`, or `--mode demo` -- but it is now something you ask
+    for rather than something you inherit.
     """
-    return mode or os.environ.get("ORVIMA_MODE", "demo")
+    return mode or os.environ.get("ORVIMA_MODE", "real")
 
 
 def _warn_inert_browser_flag(browser: str | None, mode: str) -> None:
@@ -307,7 +317,7 @@ def cmd_doctor(mode: str | None = None) -> int:
             detail = f"invalid JSON: {exc}"
     else:
         mcp_ok = None
-        detail = "not found (run 'orvima mcp --mode demo' to generate a starter config)"
+        detail = "not found (run 'orvima mcp' to generate a starter config)"
     checks.append({"name": "MCP config", "ok": mcp_ok, "detail": detail})
 
     # Print results
@@ -318,6 +328,17 @@ def cmd_doctor(mode: str | None = None) -> int:
 
     print()
     if all_ok:
+        # Say which surfaces are actually usable. In real mode with no LLM
+        # configured, `orvima mcp` works and `orvima run` raises -- and a bare
+        # "ready" sends the first-time user straight into the one that fails.
+        llm_missing = not (os.environ.get("ORVIMA_LLM_BASE") and os.environ.get("ORVIMA_LLM_KEY"))
+        if drives_a_browser and llm_missing:
+            print(
+                f"All checks passed — Orvima is ready for MCP ({active} mode).\n"
+                "  'orvima mcp' will drive your browser now.\n"
+                "  'orvima run' additionally needs ORVIMA_LLM_BASE and ORVIMA_LLM_KEY."
+            )
+            return 0
         print(f"All checks passed — Orvima is ready ({active} mode).")
         return 0
     if not drives_a_browser:
@@ -325,7 +346,7 @@ def cmd_doctor(mode: str | None = None) -> int:
         # next to it.
         print(
             f"Some checks failed — and note that orvima is in {active} mode, so "
-            "no real browser is behind it. Pass --mode real to drive one."
+            "no real browser is behind it. Pass --mode real (the default) to drive one."
         )
         return 1
     print("Some checks failed — see above.")

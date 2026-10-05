@@ -184,7 +184,10 @@ class Session:
     bus: EventBus = field(default_factory=EventBus)
     status: str = "idle"
     goal: str = ""
-    start_url: str = "https://acme.dev"
+    # Empty rather than a default page. A session with no URL should sit at
+    # about:blank, not be silently pointed at a fictional storefront because
+    # that was the demo's default.
+    start_url: str = ""
     transcript: list[dict] = field(default_factory=list)
     created: float = field(default_factory=time.time)
     _loop: AgentLoop | None = None
@@ -543,11 +546,11 @@ class SessionStore:
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
-    def create(self, mode: str, start_url: str = "https://acme.dev", goal: str = "") -> Session:
+    def create(self, mode: str, start_url: str = "", goal: str = "") -> Session:
         sess = Session(
             id=uuid.uuid4().hex[:12],
             mode=mode,
-            browser=_make_browser(mode),
+            browser=_make_browser(mode, start_url),
             start_url=start_url,
         )
         with self._lock:
@@ -578,13 +581,18 @@ class SessionStore:
             sess.close()
 
 
-def _make_browser(mode: str) -> Any:
+def _make_browser(mode: str, start_url: str = "") -> Any:
     if mode == "demo":
         from .demo import DemoBrowser
 
         return DemoBrowser()
     from .browser import BrowserController
 
-    browser = BrowserController(base_url=os.environ.get("ORVIMA_START_URL", "https://example.com"))
+    # Precedence: the URL the caller asked for, then ORVIMA_START_URL, then the
+    # browser's own default. Previously this read only the env var, so
+    # POST /api/sessions with start_url set was ignored and every real session
+    # began at example.com regardless of what the client requested.
+    target = start_url or os.environ.get("ORVIMA_START_URL", "") or ""
+    browser = BrowserController(base_url=target) if target else BrowserController()
     browser.start()
     return browser

@@ -3,18 +3,24 @@
 Three separate ways `orvima` could mislead someone about whether it is driving
 a real browser:
 
-1. `ORVIMA_MODE` defaults to `demo`, so `orvima mcp` with no flags is a
+1. `ORVIMA_MODE` used to default to `demo`, so `orvima mcp` with no flags was a
    simulator. Silence here is what let an MCP config asking for Brave run
-   against acme.dev for an entire debugging session.
+   against acme.dev for an entire debugging session. The default is now `real`,
+   and these tests pin that in both directions: the default must be real, and
+   `--mode demo` must still reach the simulator without pretending to be ready.
 2. `--browser brave` is parsed, stored, and then never used in demo mode. A
    flag that is accepted and does nothing is worse than a missing one, because
    it reads as "that part is configured".
 3. `doctor` printed "All checks passed — Orvima is ready" while running in demo
-   mode, and named a browser it was not driving.
+   mode, and named a browser it was not driving. Flipping the default is only
+   half the fix: doctor must still refuse to be ready when no browser is behind
+   it, and must not claim `orvima run` works without an LLM configured.
 
 The rule these encode: a health check that passes while the product is in a
 non-functional configuration is worse than no health check, because it is
-trusted.
+trusted. A default that quietly disagrees with the documentation is the same
+defect through a different door, which is why the default is asserted as a
+value and not as a substring.
 
 Run: pytest tests/test_cli_honesty.py -q
 """
@@ -25,6 +31,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+from orvima import cli
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 
@@ -50,24 +60,82 @@ class TestTheModeIsNeverSilent:
     """A caller must be able to tell a simulator from a browser."""
 
     def test_doctor_names_the_mode_it_would_use(self):
+        """It must say the mode it actually checked -- not a fixed word.
+
+        This used to assert the literal "demo", which was a way of pinning the
+        old default rather than the property being tested. Asserted against
+        `resolve_mode` instead: doctor says whatever the resolver says.
+        """
+        active = cli.resolve_mode(None)
         out = orvima("doctor").stdout
-        assert "demo" in out.lower(), (
-            f"doctor never says which mode it checked: {out}"
+        assert active in out.lower(), (
+            f"doctor never says which mode it checked (expected {active!r}): {out}"
         )
 
-    def test_doctor_does_not_call_demo_mode_ready(self):
+    def test_doctor_never_calls_the_simulator_ready(self):
         """The exact sentence that was wrong.
 
         Asserted as a whole line, not as a substring match on "ready" alone: the
         mode belongs *in* the readiness sentence, so the sentence has to name it.
+        In demo mode there is no browser behind orvima, so it must not be ready
+        at all -- and in real mode the readiness sentence must say "real".
         """
-        result = orvima("doctor")
-        for line in result.stdout.splitlines():
+        demo = orvima("doctor", env={"ORVIMA_MODE": "demo"})
+        for line in demo.stdout.splitlines():
             if "Orvima is ready" in line:
-                assert "demo" in line, (
-                    "doctor calls itself ready without saying no real browser "
-                    f"is behind it: {line!r}"
-                )
+                pytest.fail(f"doctor must not be ready with no browser behind it: {line!r}")
+
+        real = orvima("doctor", env={"ORVIMA_MODE": "real"})
+        ready = [ln for ln in real.stdout.splitlines() if "Orvima is ready" in ln]
+        assert ready, real.stdout
+        assert "real" in ready[0], ready[0]
+
+    def test_a_failed_doctor_says_why_in_demo_mode(self):
+        """A non-zero exit with no explanation is not usable.
+
+        Skipping the demo-specific sentence and printing the generic
+        "see above" leaves a first-time user with a red cross and no reason,
+        which is how the original version of this file could pass while
+        `doctor` stopped explaining itself.
+        """
+        out = orvima("doctor", env={"ORVIMA_MODE": "demo"}).stdout
+        assert "demo" in out, f"doctor never mentions the mode it ran in: {out}"
+        assert "no real browser is behind it" in out, (
+            f"doctor failed in demo mode without saying no browser was involved: {out}"
+        )
+
+    def test_doctor_does_not_advertise_demo_mode(self):
+        """Once demo is opt-in, doctor must not tell anyone to opt in.
+
+        The MCP hint used to say "run 'orvima mcp --mode demo'", which walked
+        every new user straight into the simulator this change removes.
+        """
+        for mode in ("real", "demo"):
+            out = orvima("doctor", env={"ORVIMA_MODE": mode}).stdout
+            assert "--mode demo" not in out, (
+                f"doctor recommends --mode demo to a {mode}-mode user: {out}"
+            )
+
+    def test_doctor_does_not_promise_autonomous_runs_without_an_llm(self):
+        """`orvima mcp` works with no LLM. `orvima run` does not.
+
+        Asserted against the readiness block only. Checking the whole output
+        would pass on the "LLM endpoint: not configured" line in the checks table
+        even with the caveat removed from the sentence people actually read, and
+        the mutation harness caught exactly that.
+        """
+        llm_set = bool(os.environ.get("ORVIMA_LLM_BASE") and os.environ.get("ORVIMA_LLM_KEY"))
+        if llm_set:
+            return
+        out = orvima("doctor", env={"ORVIMA_MODE": "real"}).stdout
+        assert "All checks passed" in out, out
+        verdict = out[out.index("All checks passed") :]
+        assert "orvima run" in verdict, (
+            f"the readiness verdict never says which surfaces work: {verdict!r}"
+        )
+        assert "ORVIMA_LLM_BASE" in verdict, (
+            f"the verdict promises readiness without naming what orvima run needs: {verdict!r}"
+        )
 
     def test_real_mode_readiness_names_the_mode(self):
         """The fix is not just removing the claim — it is qualifying it."""
@@ -77,12 +145,24 @@ class TestTheModeIsNeverSilent:
         assert "real" in ready[0], ready[0]
 
     def test_doctor_exit_code_signals_that_no_browser_would_be_driven(self):
-        """Fail closed. A non-zero exit is the only thing a script reads."""
-        result = orvima("doctor")
-        assert result.returncode != 0, (
+        """Fail closed. A non-zero exit is the only thing a script reads.
+
+        Zero is only allowed when a real browser would actually be driven.
+        """
+        demo = orvima("doctor", env={"ORVIMA_MODE": "demo"})
+        assert demo.returncode != 0, (
             "doctor exits 0 while orvima would drive a simulated site; a "
             "caller checking the exit code is told everything is fine"
         )
+
+        real = orvima("doctor", env={"ORVIMA_MODE": "real"})
+        if real.returncode == 0:
+            # Zero must be earned: a browser was detected and a profile is usable.
+            assert "would use" in real.stdout or "Browser" in real.stdout, real.stdout
+            assert "✗ Browser" not in real.stdout, (
+                f"doctor exited 0 with no usable browser: {real.stdout}"
+            )
+        assert "demo" not in real.stdout, real.stdout
 
     def test_the_browser_line_is_a_detection_not_a_claim(self):
         """In demo mode, naming a channel must not read as using it.
@@ -174,7 +254,13 @@ class TestRealModeIsWhatRealModeMeans:
             "resolve_mode no longer reads ORVIMA_MODE, so the documented way to "
             f"switch modes has changed: {source}"
         )
-        assert '"demo"' in source or "'demo'" in source, (
+        # The default is `real`, and it must be an explicit literal a reader can
+        # see. Asserting the value rather than the spelling means a rename to
+        # demo -- the silent flip this test exists to catch -- fails here.
+        assert cli.resolve_mode(None) == "real", (
+            f"the default mode is no longer real: {source}"
+        )
+        assert '"real"' in source or "'real'" in source, (
             f"the fallback is no longer an explicit literal a reader can see: {source}"
         )
 

@@ -181,8 +181,12 @@ def get_gate(rebuild: bool = False):
 
 
 class CreateSession(BaseModel):
-    mode: str = Field(default="demo", pattern="^(demo|real)$")
-    start_url: str = "https://acme.dev"
+    # real, not demo. A client that posts nothing must get a real browser, not a
+    # scripted acme.dev that answers ok:true about sites it never opened.
+    mode: str = Field(default="real", pattern="^(demo|real)$")
+    # Empty by default, so a session with no URL is not silently parked on a
+    # fictional storefront. Set it, or let ORVIMA_START_URL decide.
+    start_url: str = ""
     goal: str = ""
 
 

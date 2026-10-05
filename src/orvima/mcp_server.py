@@ -68,7 +68,7 @@ def register_tools(server: Any, sess: Any) -> bool:
     return supports_annotations
 
 
-def run(demo: bool = True, name: str = "orvima") -> int:
+def run(demo: bool = False, name: str = "orvima") -> int:
     """Build a session + MCP server and serve on stdio. Blocks until stdin closes."""
     sess = SessionStore().create(mode="demo" if demo else "real")
     server = _server_class()(name)

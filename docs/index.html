@@ -205,8 +205,8 @@
   <section id="facts">
     <h2>Measured, not claimed</h2>
     <div class="stats">
-      <div class="stat"><b>662</b><span>tests, 39 files</span></div>
-      <div class="stat"><b>7.6k</b><span>lines of source</span></div>
+      <div class="stat"><b>675</b><span>tests, 40 files</span></div>
+      <div class="stat"><b>7.7k</b><span>lines of source</span></div>
       <div class="stat"><b>11/11</b><span>bench pass rate</span></div>
       <div class="stat"><b>5/5</b><span>irreversible actions, done exactly once</span></div>
     </div>
@@ -239,12 +239,15 @@ cd orvima &amp;&amp; uv sync</code></pre>
       </article>
     </div>
     <div class="callout">
-      <strong>By default it runs in demo mode.</strong>
+      <strong>It drives a real browser by default.</strong>
       <p>
-        <code>orvima mcp</code> with no <code>--mode</code> serves the simulator,
-        not your browser. Pass <code>--mode real</code> and <code>--browser brave</code>
-        to drive your own. Naming the mode is on purpose &mdash; a silent default is
-        how an agent ends up confidently reporting on a website it never opened.
+        <code>orvima mcp</code> with no flags now launches a browser you own and
+        can watch. This used to be the other way round: the default served a
+        simulated site and answered <code>ok: true</code> about it, which is how
+        a client ends up confidently reporting on a website no browser ever
+        opened. The offline tour is still there and still one flag away &mdash;
+        <code>--mode demo</code>, or <code>orvima demo</code> &mdash; but you now
+        ask for it rather than inherit it.
       </p>
     </div>
   </section>
