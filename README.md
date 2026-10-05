@@ -1,6 +1,7 @@
 # Orvima
 
 [![M8ven Score](https://m8ven.ai/badge/mcp/sachitt-av-08/orvima)](https://m8ven.ai/mcp/sachitt-av-08/orvima?s=readme)
+[![Orvima on AI Agents Listing](https://aiagentslisting.com/orvima/badge.svg?claim=561a5016138cf5b244db958c4849711d)](https://aiagentslisting.com/mcp/orvima)
 
 **Your browser, driven by any AI — with a live viewport you control.**
 
