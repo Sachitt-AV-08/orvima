@@ -93,6 +93,10 @@ PAGE = """<!doctype html>
   img.frame { width: 100%; border-radius: 8px; border: 1px solid var(--line);
               margin-top: .6rem; display: block; }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-top: 1rem; }
+  .ttl { font-size: .78rem; color: var(--dim); margin: .55rem 0 0;
+         font-family: ui-monospace, "Cascadia Code", monospace; }
+  .ttl.soon { color: var(--warn); }
+  .ttl.gone { color: var(--no); }
   .empty { color: var(--dim); text-align: center; padding: 2.5rem 0; }
   .note { font-size: .8rem; color: var(--dim); margin-top: 1.5rem;
           border-top: 1px solid var(--line); padding-top: .9rem; }
@@ -130,6 +134,28 @@ PAGE = """<!doctype html>
   const TOKEN_KEY = "orvima.token";
   const el = (id) => document.getElementById(id);
   const token = () => localStorage.getItem(TOKEN_KEY) || "";
+
+  // Gate health from the last poll, so a card can work out its own deadline.
+  let ttl = null;
+
+  function duration(seconds) {
+    const s = Math.max(0, Math.round(seconds));
+    if (s < 60) return s + "s";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + "m";
+    return Math.floor(m / 60) + "h " + (m % 60) + "m";
+  }
+
+  // Seconds left before this decision stops being answerable, or null when the
+  // gate in force has no deadline. null is not the same as 0: 0 means "already
+  // dead, take the buttons away", null means "I do not know, so leave the
+  // decision to the human". Removing a control because information is missing
+  // would be the same error as removing it because it is unsafe.
+  function remaining(request) {
+    if (typeof ttl !== "number" || ttl <= 0) return null;
+    if (typeof request.created !== "number") return null;
+    return ttl - (Date.now() / 1000 - request.created);
+  }
 
   // Every value from the page under judgement goes in as textContent. The page
   // text is attacker-controlled by definition, so innerHTML is not used
@@ -182,8 +208,22 @@ PAGE = """<!doctype html>
 
     if (request.reason) card.appendChild(node("p", "why", request.reason));
 
-    // The decision controls. Absent entirely unless there is a token.
-    if (token()) {
+    // How long this decision is still answerable. A queued approval that has
+    // already outlived its deadline cannot be approved - the gate drops it and
+    // returns nothing - so showing buttons on it invites a tap that silently
+    // does nothing and looks like a broken queue.
+    const left = remaining(request);
+    if (left !== null) {
+      const label = left <= 0
+        ? "expired - this decision can no longer be answered"
+        : "expires in " + duration(left);
+      card.appendChild(node("p", "ttl" + (left <= 0 ? " gone" : left < 30 ? " soon" : ""), label));
+    }
+
+    // The decision controls. Absent entirely unless there is a token, and
+    // absent on a card that is already past its deadline.
+    const dead = left !== null && left <= 0;
+    if (token() && !dead) {
       const actions = node("div", "actions");
       const approve = node("button", "primary", "Approve");
       const deny = node("button", "danger", "Deny");
@@ -210,13 +250,23 @@ PAGE = """<!doctype html>
 
   function render(payload) {
     const gate = el("gate");
-    if (payload.error) { gate.textContent = payload.error; gate.className = "bad"; }
+    if (payload.error) { gate.textContent = payload.error; gate.className = "bad"; ttl = null; }
     else {
-      const g = payload.gate || {};
-      gate.textContent = g.available === false
-        ? "gate unavailable — every action needs a human"
-        : ("gate " + (g.mode || "off") + " · " + (g.gate || "?"));
-      gate.className = g.available === false ? "bad" : "";
+      // Gate health arrives as sibling fields of `approvals`, not nested under
+      // `gate` - `gate` itself is the status string. Reading payload.gate as an
+      // object silently yields undefined for every field, which is how the
+      // "gate unavailable" warning below went years without ever firing.
+      const status = typeof payload.gate === "string" ? payload.gate : "?";
+      const unavailable = payload.available === false;
+      // A gate payload reporting no deadline must clear the cached one, or a
+      // card from a later poll keeps counting down against a stale TTL.
+      ttl = typeof payload.approval_ttl === "number" && payload.approval_ttl > 0
+        ? payload.approval_ttl
+        : null;
+      gate.textContent = unavailable
+        ? "gate unavailable - every action needs a human"
+        : ("gate " + (payload.mode || "off") + " · " + status);
+      gate.className = unavailable ? "bad" : "";
     }
 
     const queue = el("queue");

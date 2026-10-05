@@ -154,9 +154,11 @@ class TestThePageGrantsNothing:
         unauthenticated reader what the queue looks like, and invites the
         obvious next question - how do I get one of those.
         """
-        assert "if (token())" in page, (
-            "the decision controls are not conditional on having a token"
-        )
+        # Whether the controls appear is asserted against the rendered DOM in
+        # test_phone_dom.py, which is the layer a reader actually experiences.
+        # Grepping the source for the conditional cannot tell an absent button
+        # from a rendered one, so a source check here could only ever confirm
+        # the source still looks the way it did when it was written.
         assert "button:disabled" in page, (
             "if the controls were meant to be disabled rather than absent, the "
             "disabled styling should exist"

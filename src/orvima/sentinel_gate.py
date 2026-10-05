@@ -403,6 +403,10 @@ class SentinelGate:
         return request.id
 
     def pending(self, session_id: str | None = None) -> list[ApprovalRequest]:
+        # A pure read. Expiry is applied by whoever presents the queue, not
+        # here: this accessor is also called from the agent's own wait loop, and
+        # a getter that drops state would consume the request out from under
+        # whichever caller happened to poll first.
         with self._lock:
             items = list(self._pending.values())
         if session_id is None:

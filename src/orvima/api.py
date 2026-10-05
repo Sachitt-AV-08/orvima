@@ -246,6 +246,17 @@ def token_ok(offered: str | None) -> bool:
     return hmac.compare_digest(offered, expected)
 
 
+def _positive_ttl(active) -> float | None:
+    """The gate's approval TTL, or None when it has no expiry.
+
+    0 and negative values are orvima's "no expiry" sentinel rather than a real
+    deadline, so they become None instead of travelling to the client as a
+    number that reads as "the deadline has already passed".
+    """
+    ttl = getattr(active, "approval_ttl", None)
+    return ttl if isinstance(ttl, (int, float)) and ttl > 0 else None
+
+
 def _gate_health(active: Any | None) -> dict:
     """Gate health, in the shape both the UI and the phone page read.
 
@@ -258,6 +269,15 @@ def _gate_health(active: Any | None) -> dict:
         "gate": gate_status(),
         "available": active.available,
         "mode": os.environ.get("ORVIMA_SENTINEL_MODE", "off"),
+        # The phone page needs the deadline to say how long a queued decision is
+        # still answerable. Age alone does not say whether it is still live.
+        #
+        # A TTL of 0 is orvima's own sentinel for "no expiry" (`_expired`
+        # returns False when it is <= 0), so it is normalised to None here.
+        # Reporting 0 would read as a deadline that has already passed: a client
+        # subtracting a now-moment from zero concludes everything is expired, and
+        # would hide the controls on every live decision.
+        "approval_ttl": _positive_ttl(active),
     }
 
 
@@ -451,10 +471,18 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
         `gate=1` includes gate health. Optional because the existing UI polls
         this without it, and a parameter that changes the response shape should
         be asked for rather than imposed.
+
+        Expiry is applied here, at the boundary that hands the queue to a human.
+        A request past its TTL can no longer be answered - `resolve()` drops it
+        and returns None - so listing one would put a live-looking decision in
+        front of a human whose tap silently does nothing. Sweeping here keeps
+        `pending()` a pure read, so the agent's own wait loop and this endpoint
+        cannot race each other over who removes the request.
         """
         active = get_gate()
         if active is None:
             return {"ok": True, "approvals": [], "gate": "disabled"}
+        active.expire_stale()
         body = {"ok": True, "approvals": [r.public() for r in active.pending(session_id)]}
         if gate:
             body.update(_gate_health(active))
@@ -495,11 +523,11 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
         active = get_gate(rebuild=rebuild)
         if active is None:
             return {"ok": True, "gate": gate_status(), "available": False}
+        # Spread from the shared builder so this endpoint cannot report a
+        # different state for the same gate than /api/approvals?gate=1 does.
         return {
             "ok": True,
-            "gate": gate_status(),
-            "available": active.available,
-            "mode": os.environ.get("ORVIMA_SENTINEL_MODE", "off"),
+            **_gate_health(active),
             "stats": active.snapshot_stats(),
         }
 

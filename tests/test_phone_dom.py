@@ -23,6 +23,7 @@ Run: pytest tests/test_phone_dom.py -q
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -93,6 +94,11 @@ def phone(browser):
             elif url.endswith("/api/approvals?gate=1"):
                 state = page.evaluate("window.__orvima_test_token || null")
                 payload = page.evaluate("window.__orvima_test_payload || null")
+                # Read here, not at the top of the handler: evaluating on the
+                # page while it is still navigating deadlocks the load, and
+                # only this response shape needs the value anyway.
+                ttl = page.evaluate("window.__orvima_test_ttl ?? null")
+                available = page.evaluate("window.__orvima_test_available ?? true")
                 if state != (request.headers.get("x-orvima-token") or None):
                     route.fulfill(
                         status=401,
@@ -107,9 +113,16 @@ def phone(browser):
                         {
                             "ok": True,
                             "approvals": [payload or HOSTILE],
+                            # Gate health is a sibling of `approvals`, not nested
+                            # under `gate`: `gate` is the status string. Matches
+                            # what `_gate_health` actually merges into the body.
                             "gate": "on",
-                            "available": True,
+                            "available": available,
                             "mode": "hybrid",
+                            # The page works out each card's deadline from this
+                            # and `created`. Omitting it is a real state, so the
+                            # stub must be able to send a payload without it.
+                            **({"approval_ttl": ttl} if ttl is not None else {}),
                         }
                     ),
                 )
@@ -125,7 +138,8 @@ def phone(browser):
     context.close()
 
 
-def _open(phone, *, token=TOKEN, server_token=None, payload=None, settle=0):
+def _open(phone, *, token=TOKEN, server_token=None, payload=None, ttl=None,
+          available=True, settle=0):
     """Load the page holding `token`, with the server expecting `server_token`.
 
     `server_token` defaults to `token` because the happy path is the common case,
@@ -155,15 +169,55 @@ def _open(phone, *, token=TOKEN, server_token=None, payload=None, settle=0):
         phone.add_init_script(
             f"window.__orvima_test_payload = {json.dumps(payload)};"
         )
+    if ttl is not None:
+        phone.add_init_script(f"window.__orvima_test_ttl = {json.dumps(ttl)};")
+    if available is not True:
+        phone.add_init_script(f"window.__orvima_test_available = {json.dumps(available)};")
     phone.goto(f"{ORIGIN}/phone")
     if settle:
         phone.wait_for_timeout(settle)
 
 
-def _render(phone, **kwargs):
+def _render(phone, ttl=None, **kwargs):
     """Open the page and wait for the queue to hold a card."""
-    _open(phone, **kwargs)
+    _open(phone, ttl=ttl, **kwargs)
     phone.wait_for_selector("#queue .card", timeout=8000)
+
+
+class TestTheGateStatusIsActuallyRead:
+    """`gate` in the payload is the status string, not an object of settings.
+
+    `_gate_health` merges its fields as siblings of `approvals`. A page that
+    reads `payload.gate` as an object therefore gets undefined for every field
+    it cares about, and cannot tell a working gate from a dead one. The symptom
+    is not a crash: it is a page that looks healthy while reporting nothing.
+    """
+
+    def test_the_status_line_names_the_real_mode(self, phone):
+        _open(phone, settle=900)
+        line = phone.inner_text("#gate").strip()
+        assert "hybrid" in line and "on" in line, (
+            f"the gate status line does not reflect the mode and status the "
+            f"server reported, so gate health is invisible on the page: {line!r}"
+        )
+
+    def test_an_unavailable_gate_is_stated_rather_than_hidden(self, phone):
+        """Every action needs a human - the page has to say so loudly."""
+        _open(phone, available=False, settle=900)
+        gate = phone.inner_text("#gate")
+        assert "unavailable" in gate, (
+            f"the gate reports available=false and the page does not say so, so "
+            f"a fully-hand-gated orvima looks like a working one: {gate!r}"
+        )
+        assert phone.eval_on_selector("#gate", "n => n.className") == "bad", (
+            "an unavailable gate is not styled as a problem"
+        )
+
+    def test_a_healthy_gate_is_not_styled_as_a_problem(self, phone):
+        _open(phone, settle=900)
+        assert phone.eval_on_selector("#gate", "n => n.className") == "", (
+            "a working gate is styled as bad"
+        )
 
 
 def _card_text(phone) -> str:
@@ -457,6 +511,119 @@ class TestItIsUsableOneHanded:
         assert overflow <= 1, (
             f"a long url pushed the layout {overflow}px wide; it has to break "
             "within its own box"
+        )
+
+
+class TestAnExpiredDecisionCannotBeApproved:
+    """The queue can outlive the TTL, and a queued approval is irreversible.
+
+    A human who walks away for ten minutes comes back to a card they no longer
+    have the context to judge. The gate will refuse the answer regardless - it
+    drops anything past its deadline - so the danger is not that a stale tap
+    succeeds, it is that the page offers a control which silently does nothing.
+    That reads as a broken queue, and the human's next move is to keep tapping.
+    """
+
+    def _card(self, phone, *, ttl, age_seconds):
+        """Render one card created `age_seconds` in the past."""
+        created = time.time() - age_seconds
+        _render(
+            phone,
+            ttl=ttl,
+            payload={**HOSTILE, "created": created},
+        )
+        return phone.query_selector("#queue .card")
+
+    def test_a_fresh_decision_offers_both_buttons(self, phone):
+        self._card(phone, ttl=300, age_seconds=5)
+        assert len(_buttons(phone)) == 2, _buttons(phone)
+
+    def test_a_live_decision_says_how_long_is_left(self, phone):
+        card = self._card(phone, ttl=300, age_seconds=60)
+        text = card.query_selector(".ttl").inner_text()
+        assert "expires in" in text, (
+            f"a queued decision does not say when it stops being answerable, so "
+            f"the human cannot tell a live card from a dead one: {text!r}"
+        )
+
+    def test_a_decision_past_its_deadline_has_no_buttons(self, phone):
+        self._card(phone, ttl=300, age_seconds=900)
+        assert _buttons(phone) == [], (
+            "buttons are offered on a decision the gate will refuse: "
+            f"{_buttons(phone)}"
+        )
+
+    def test_an_expired_decision_says_so(self, phone):
+        card = self._card(phone, ttl=300, age_seconds=900)
+        text = card.query_selector(".ttl").inner_text()
+        assert "expired" in text.lower(), (
+            f"the card vanishes its controls with no explanation, so the human "
+            f"thinks the queue is broken rather than that the deadline passed: {text!r}"
+        )
+
+    def test_the_expiry_notice_is_distinguishable_from_a_live_one(self, phone):
+        """Colour alone must not carry it, but the wording has to differ."""
+        live = self._card(phone, ttl=300, age_seconds=5).query_selector(".ttl")
+        live_text, live_class = live.inner_text(), live.get_attribute("class")
+        dead = self._card(phone, ttl=300, age_seconds=900).query_selector(".ttl")
+        dead_text, dead_class = dead.inner_text(), dead.get_attribute("class")
+        assert live_text != dead_text, (live_text, dead_text)
+        assert live_class != dead_class, (live_class, dead_class)
+
+    def test_no_deadline_means_the_buttons_stay(self, phone):
+        """No TTL is not the same as an expired decision.
+
+        A gate with no deadline is a real configuration, and removing the
+        control because information was missing would be the same error as
+        removing it because the action was unsafe.
+        """
+        _render(phone, ttl=None, payload={**HOSTILE, "created": 0})
+        assert len(_buttons(phone)) == 2, (
+            f"a gate reporting no deadline must leave the decision to the human: "
+            f"{_buttons(phone)}"
+        )
+
+    def test_a_missing_created_timestamp_does_not_hide_the_buttons(self, phone):
+        """Absent data is not evidence of expiry.
+
+        `created` is what the countdown is computed from. If its absence were
+        read as "long past the deadline", a server that stopped sending it would
+        silently make every decision unanswerable - the safe-looking outcome
+        being the one that quietly breaks the tool.
+        """
+        payload = {k: v for k, v in HOSTILE.items() if k != "created"}
+        _render(phone, ttl=300, payload=payload)
+        assert len(_buttons(phone)) == 2, _buttons(phone)
+
+    def test_a_later_poll_reporting_no_ttl_clears_the_countdown(self, phone):
+        """The page reuses the last TTL it saw, so a poll that reports none has
+        to clear it.
+
+        The page polls every 2.5s. If a poll arrives with no deadline and the
+        cached value is left alone, every card goes on counting down against a
+        gate that no longer declares one - so a live decision would have its
+        controls removed on a timer nothing ever re-declared.
+        """
+        _render(phone, ttl=300, payload={**HOSTILE, "created": time.time() - 5})
+        assert phone.query_selector("#queue .ttl") is not None, "no countdown to start with"
+
+        phone.evaluate("window.__orvima_test_ttl = null")
+        phone.wait_for_timeout(3200)  # one poll interval plus slack
+        assert phone.query_selector("#queue .ttl") is None, (
+            "the countdown is still on screen after the server stopped reporting "
+            "a deadline, so a card expires against a TTL nothing re-declared"
+        )
+        assert len(_buttons(phone)) == 2, (
+            f"controls were removed after the deadline went away: {_buttons(phone)}"
+        )
+
+    def test_a_missing_created_timestamp_says_nothing_about_the_deadline(self, phone):
+        """No countdown is better than a fabricated one."""
+        payload = {k: v for k, v in HOSTILE.items() if k != "created"}
+        _render(phone, ttl=300, payload=payload)
+        assert phone.query_selector("#queue .ttl") is None, (
+            "a countdown is shown for a card with no creation time, so the number "
+            "on screen cannot be derived from anything the server sent"
         )
 
 
