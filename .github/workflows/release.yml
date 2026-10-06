@@ -33,11 +33,14 @@ jobs:
       - name: Install deps
         run: uv sync --extra mcp --extra dev
 
+      - name: Install Sentinel (pinned) so the gate transcript is reproducible in CI
+        run: uv pip install "sentinel @ git+https://github.com/Sachitt-AV-08/sentinel.git@ad90f5d95d872203153672610009e4609cb28d04"
+
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run --no-sync ruff check src tests
 
       - name: Test
-        run: uv run pytest
+        run: uv run --no-sync pytest
 
   build-and-release:
     needs: test-and-lint

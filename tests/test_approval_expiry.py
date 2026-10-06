@@ -28,7 +28,10 @@ class ShownRisk:
 
 @pytest.fixture
 def gate():
-    return make_gate(classifier_mode="off", approval_ttl=0.05)
+    # 0.05 was tight on slow CI runners: the expiry sweep could drop the request
+    # before the very next call, yielding an empty list and a flaky failure.
+    # 0.5s survives a slow poll without touching what the assertions check.
+    return make_gate(classifier_mode="off", approval_ttl=0.5)
 
 
 @pytest.fixture
@@ -52,7 +55,7 @@ class TestTheEndpointDoesNotListUnanswerableDecisions:
 
     def test_a_decision_past_its_ttl_is_not_listed(self, client, gate):
         gate.request_approval("s1", "browse_click", {}, ShownRisk())
-        time.sleep(0.15)
+        time.sleep(0.6)  # > fixture TTL (0.5s)
         body = client.get("/api/approvals").json()
         assert body["approvals"] == [], (
             f"the queue still offers a decision the gate will refuse: {body}"
@@ -66,7 +69,7 @@ class TestTheEndpointDoesNotListUnanswerableDecisions:
         alone is ambiguous.
         """
         request_id = gate.request_approval("s1", "browse_click", {}, ShownRisk())
-        time.sleep(0.15)
+        time.sleep(0.6)  # > fixture TTL (0.5s)
         client.get("/api/approvals")
         assert gate.lapsed(request_id), (
             "the request was removed without being marked lapsed, so a waiting "
@@ -97,7 +100,7 @@ class TestTheEndpointReportsItsDeadline:
 
     def test_the_ttl_is_reported(self, client):
         body = client.get("/api/approvals", params={"gate": 1}).json()
-        assert body["approval_ttl"] == 0.05, body
+        assert body["approval_ttl"] == 0.5, body
 
     def test_the_ttl_is_absent_unless_asked_for(self, client):
         """A parameter that changes the response shape is asked for, not imposed."""

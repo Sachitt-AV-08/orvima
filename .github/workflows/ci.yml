@@ -22,14 +22,16 @@ jobs:
         run: uv sync --extra mcp --extra dev
       - name: Install Playwright browsers
         run: uv run playwright install --with-deps chromium
+      - name: Install Sentinel (gate backend, pinned for reproducibility)
+        run: uv pip install "sentinel @ git+https://github.com/Sachitt-AV-08/sentinel.git@ad90f5d95d872203153672610009e4609cb28d04"
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run --no-sync ruff check src tests
       - name: Test (offline — no browser needed)
-        run: uv run pytest
+        run: uv run --no-sync pytest
       - name: CLI smoke (demo)
         run: |
-          uv run orvima --version
-          uv run orvima run "check the products page" --mode demo
+          uv run --no-sync orvima --version
+          uv run --no-sync orvima run "check the products page" --mode demo
 
   build-smoke:
     runs-on: ubuntu-latest

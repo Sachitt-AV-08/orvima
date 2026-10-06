@@ -17,7 +17,7 @@ import sys
 import urllib.request
 
 from . import __version__
-from .browser import DEFAULT_PROFILE, detect_channel
+from .browser import DEFAULT_PROFILE, bundled_chromium_path, detect_channel
 
 
 def _out(obj: dict) -> None:
@@ -241,17 +241,24 @@ def cmd_doctor(mode: str | None = None) -> int:
     # 1. Browser detection. Only what real mode would use, and only as a
     # detection result — never reported as a browser in use.
     channel = detect_channel()
+    bundle = bundled_chromium_path() if not channel else None
+    browser_ok = channel is not None or bundle is not None
     checks.append(
         {
             "name": "Browser",
             # In demo mode a missing browser is not a problem, because nothing
             # needs one. Reporting it as a failure would be noise; reporting it
             # as ready would be the lie this check used to tell.
-            "ok": channel is not None or not drives_a_browser,
+            "ok": browser_ok or not drives_a_browser,
             "detail": (
                 f"would use {channel}"
                 if channel
-                else "no Chrome/Edge/Chromium/Brave found on PATH"
+                else (
+                    "would use bundled Chromium (Playwright)"
+                    if bundle
+                    else "no Chrome/Edge/Chromium/Brave found on PATH; "
+                    "run 'playwright install chromium' for a real browser"
+                )
             ),
         }
     )

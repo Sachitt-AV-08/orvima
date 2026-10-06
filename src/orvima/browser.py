@@ -406,6 +406,31 @@ def detect_channel() -> str | None:
     return None
 
 
+def bundled_chromium_path() -> str | None:
+    """Path to Playwright's bundled Chromium, or ``None`` if it is not present.
+
+    ``detect_channel`` returns ``None`` to mean "use bundled Chromium" - the
+    docstring of that function promises a browser when one is found, so a
+    ``None`` here is only a real browser if the bundle is actually downloaded.
+    Real mode drives this binary, so doctor must treat a present bundle as a
+    usable browser rather than as a failure: the previous code reported "no
+    Chrome/Edge/Chromium/Brave found on PATH" while a working browser was right
+    there, which is the exact lie this check used to tell.
+    """
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+
+        with sync_playwright() as p:
+            path = p.chromium.executable_path
+    except Exception:
+        return None
+    # executable_path may return a non-existent path before `playwright install`;
+    # existence is the only thing that means "a browser is available".
+    if path and Path(path).exists():
+        return str(path)
+    return None
+
+
 class BrowserController(NavigationBackend):
     """Owns a browser + one active page, over Playwright."""
 
