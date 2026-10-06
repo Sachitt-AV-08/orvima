@@ -2,6 +2,9 @@
 
 [![M8ven Score](https://m8ven.ai/badge/mcp/sachitt-av-08/orvima)](https://m8ven.ai/mcp/sachitt-av-08/orvima?s=readme)
 [![Orvima on AI Agents Listing](https://aiagentslisting.com/orvima/badge.svg?claim=561a5016138cf5b244db958c4849711d)](https://aiagentslisting.com/mcp/orvima)
+[![CI](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml/badge.svg)](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/Sachitt-AV-08/orvima)](https://github.com/Sachitt-AV-08/orvima/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Your browser, driven by any AI — with a live viewport you control.**
 
@@ -251,7 +254,7 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
 - [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (470 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
+- [x] CI + test suite (692 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [ ] Dashboard UI (watch the agent live, approve actions)
 - [ ] Media playback (file downloads are done: `browse_download`)
@@ -271,11 +274,12 @@ differently and the failure mode in the second one looks like a broken install.
 | `ORVIMA_SENTINEL=off` | **Fully unattended**, deliberately. Reported as `gate: "off"` at `/api/gate/stats` |
 
 `sentinel` is an optional package and is **not** a declared dependency - not even
-an extra. So the second row is what a fresh `pip install orvima` gives you: an
-API that holds every action for approval because there is no classifier to judge
-it. That is the fail-closed default working, and the refusal message tells you
-both ways out - install `sentinel`, or set `ORVIMA_SENTINEL=off` and accept that
-nothing is being checked.
+an extra. So the second row is what a fresh install from the GitHub Release
+gives you (the `sentinel` extra is not pulled in): an API that holds every
+action for approval because there is no classifier to judge it. That is the
+fail-closed default working, and the refusal message tells you both ways out -
+install `sentinel`, or set `ORVIMA_SENTINEL=off` and accept that nothing is
+being checked.
 
 Check what you have:
 

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>orvima — a browser agent that admits when it isn't sure</title>
-<meta name="description" content="Self-hosted browser agent. 19 browse_* MCP tools drive your own Chrome, Edge or Brave with your logins, on your machine. Every action is DOM-verified, and irreversible ones wait for a human.">
+<meta name="description" content="Self-hosted browser agent. 22 browse_* MCP tools drive your own Chrome, Edge or Brave with your logins, on your machine. Every action is DOM-verified, and irreversible ones wait for a human.">
 <meta property="og:title" content="orvima — a browser agent that admits when it isn't sure">
-<meta property="og:description" content="19 browse_* MCP tools. Your browser, your logins, your machine. Every action DOM-verified.">
+<meta property="og:description" content="22 browse_* MCP tools. Your browser, your logins, your machine. Every action DOM-verified.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://orvima.in">
 <meta name="twitter:card" content="summary_large_image">
@@ -58,8 +58,7 @@
       </div>
       <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
       <p class="installnote" id="installnote">
-        Installs the v0.1.4 release &mdash; 19 tools.
-        <code>main</code> is ahead at 22.
+        Installs the current <a href="https://github.com/Sachitt-AV-08/orvima/releases/latest">release</a> &mdash; <b>22</b> <code>browse_*</code> tools.
       </p>
     </div>
   </section>
@@ -168,7 +167,7 @@
 
   <!-- ------------------------------------------------------------------ -->
   <section id="tools">
-    <h2>19 tools, on <code>127.0.0.1</code></h2>
+    <h2>22 tools, on <code>127.0.0.1</code></h2>
     <p class="section-lede">
       Every tool is plain dict-in, dict-out over one contract, so the MCP server,
       the HTTP API and the agent loop cannot drift apart. Your cookies and
@@ -193,8 +192,7 @@
       <span>browse_switch_tab</span>
       <span>browse_list_tabs</span>
       <span>browse_close_tab</span>
-      <span>browse_go_back</span>
-    </div>
+      <span>browse_go_back</span><span>browse_eval_audit</span><span>browse_set_files</span><span>browse_download</span></div>
     <p class="footnote">
       Three more &mdash; <code>browse_eval_audit</code>, <code>browse_set_files</code>,
       <code>browse_download</code> &mdash; are on <code>main</code> and ship in the
@@ -267,3 +265,7 @@ cd orvima &amp;&amp; uv sync</code></pre>
 <script src="main.js"></script>
 </body>
 </html>
+
+
+
+

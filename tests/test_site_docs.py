@@ -44,7 +44,7 @@ CSS = DOCS / "style.css"
 MAIN_JS = DOCS / "main.js"
 TRANSCRIPT = DOCS / "transcript.json"
 
-RELEASE_TAG = "v0.1.4"
+RELEASE_TAG = "v0.1.5"
 
 
 def tool_names() -> set[str]:
@@ -581,3 +581,4 @@ class TestTheRenderedPage:
                  .map(i => i.getAttribute('src'))"""
         )
         assert not missing, f"images that did not load: {missing}"
+

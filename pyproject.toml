@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "orvima"
-version = "0.1.4"
+version = "0.1.5"
 description = "An agent-operated browser with a human-grade UI. Any AI tool gets eyes and hands on the web, on your machine."
 readme = "README.md"
 requires-python = ">=3.10"

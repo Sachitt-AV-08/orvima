@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-06
+
 Everything below was developed against a written plan with falsifiable gates.
 Each phase was verified load-bearing by breaking the fix in turn and confirming
 the test count moved — a green test that cannot detect its own bug is worse than
@@ -15,6 +17,39 @@ The gate and documentation work below extends that method past the code: the
 false claims in `SECURITY.md` and `README.md` were found by checking each
 documented claim against the running program, and are now pinned by tests that
 fail if the docs drift back.
+
+### Changed
+- **Real mode is now the default everywhere.** `resolve_mode()` → `"real"`,
+  `CreateSession.mode` → `"real"`, `start_url` → `""` (was `https://acme.dev`),
+  and `mcp_server.run(demo=False)`. Demo is opt-in via `--mode demo` /
+  `orvima demo`. The MCP config examples and `opencode.jsonc` entry no longer
+  pass a `--mode` flag.
+- **Doctor's Browser check is honest on Linux/macOS.** `detect_channel()` returns
+  `None` to mean "use Playwright's bundled Chromium", and the test suite already
+  drives that binary — so doctor no longer reports "no browser found on PATH"
+  while a working Chromium is installed. It now reports `would use {channel}` or,
+  when only the bundle is present, `would use bundled Chromium (Playwright)`.
+- **`sentinel` (the optional gate backend) is installed in CI**, pinned to
+  `ad90f5d` of `github.com/Sachitt-AV-08/sentinel`, so the published gate
+  transcript on orvima.in is reproduced and verified by CI rather than only by a
+  local checkout. `uv run --no-sync` keeps it in the venv after `uv sync`.
+
+### Added
+- **MCP prompts + bounded output.** Six prompts
+  (`verify-action`, `extract-table`, `read-article`, `compare-prices`,
+  `submit-form`, `wait-and-extract`) registered via `register_prompts()`.
+  `browse_snapshot` caps at 60 items / 4000 chars (max 500 / 40000) and
+  `browse_extract` at 8000 chars (max 100000), both reporting truncation via
+  `total_items` / `returned` / `truncated` / `next_offset`.
+- **Full documentation site** (`docs/build_docs.py` → `docs/docs.html`): tool
+  reference for all 22 tools with annotations + rationale, 8 HTTP endpoints, 4
+  client MCP configs, prompts, and the trace architecture. Linked from the
+  nav as "Full docs".
+- **Trace module** (`src/orvima/trace.py`): one trace ID, one event schema, one
+  tamper-evident hash-chained audit log, pure `classify_effect()` (POSTs are
+  mutations, side-effect-looking GETs are `possible_mutation`, beacons are
+  filtered-but-reported), and `audit()` deriving the kill-criteria numbers
+  (interruptions/step, ungated effects, LLM token sums). Standard library only.
 
 ### Fixed
 - **A sticky or fixed header could make an element permanently unclickable, and

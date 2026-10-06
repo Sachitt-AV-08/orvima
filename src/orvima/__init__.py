@@ -12,7 +12,7 @@ every action is confirmed in the DOM before it is called done.
     orvima demo            # offline tour on a simulated site, no browser
 """
 
-__version__ = "0.1.3"
+__version__ = "0.1.5"
 
 from .errors import BrowserError, OrvimaError, SessionNotFoundError  # noqa: F401
 
