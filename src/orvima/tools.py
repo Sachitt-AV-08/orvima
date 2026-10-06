@@ -48,6 +48,65 @@ def _candidates(browser):
 #: The keys an action accepts as an expectation, in the order they are passed.
 _EXPECT_KEYS = ("expect_url", "expect_text", "expect_count", "expect_timeout_ms")
 
+# --- bounded output -------------------------------------------------------
+#
+# A snapshot of a real page can be thousands of elements. Returned whole, it
+# does not inform an agent, it just consumes the context window that the agent
+# needed in order to act, and the part that mattered is somewhere in the middle
+# of the paste. So the readers are bounded by default.
+#
+# Two rules make the bound safe rather than lossy-in-silence:
+#
+# 1. A truncated response says so, and says how to get the rest. `next_offset` is
+#    not advisory; it is the value to pass back to continue.
+# 2. The bound can be raised, but not removed. A caller who genuinely needs
+#    every element can ask for up to _MAX_*, which is still finite, because an
+#    unbounded read on an attacker-influenced page is how a context window gets
+#    filled with content chosen by someone else.
+
+#: Elements returned by browse_snapshot when the caller states no limit.
+SNAPSHOT_DEFAULT_ITEMS = 60
+#: Hard ceiling on browse_snapshot items, whatever the caller asks for.
+SNAPSHOT_MAX_ITEMS = 500
+#: Characters of page text returned by browse_snapshot when the caller states no limit.
+SNAPSHOT_DEFAULT_TEXT = 4000
+#: Hard ceiling on snapshot body text.
+SNAPSHOT_MAX_TEXT = 40000
+#: Characters returned by browse_extract when the caller states no limit.
+EXTRACT_DEFAULT_CHARS = 8000
+#: Hard ceiling on extracted text.
+EXTRACT_MAX_CHARS = 100000
+
+
+def _clamp(value, low: int, high: int, default: int) -> int:
+    """A stated limit, clamped into range; a missing one becomes the default.
+
+    Clamping rather than erroring matters because the limit is a safety bound
+    and the caller is an agent that cannot be asked a follow-up question. A
+    request for 10 million elements is a bug in the caller, and the right
+    response is the largest bounded read, not an exception.
+    """
+    if value is None:
+        return default
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    if n < 0:
+        return 0
+    return max(low, min(high, n))
+
+
+def _truncate_text(text: str, max_chars: int) -> tuple[str, int, bool]:
+    """Return (text, total_length, was_truncated)."""
+    if text is None:
+        return "", 0, False
+    text = str(text)
+    total = len(text)
+    if total <= max_chars:
+        return text, total, False
+    return text[:max_chars], total, True
+
 
 def _expect_kwargs(**given) -> dict:
     """Only the expectations the caller actually stated.
@@ -242,17 +301,66 @@ def tool_browse_scroll(browser, direction: str = "down") -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_browse_snapshot(browser, *_args, **_kw) -> dict:
+def tool_browse_snapshot(
+    browser,
+    limit: int | None = None,
+    offset: int = 0,
+    max_text: int | None = None,
+) -> dict:
     """Describe the current page: URL, title, interactive elements and visible text.
 
-    Compact and LLM-friendly — prefer this over dump_html. Use it after every
-    action to confirm the result before reporting success.
+    Use it after every action to confirm the result before reporting success, and
+    whenever you need to know what is on the page before choosing a selector.
+
+    **Bounded by default.** A real page can hold thousands of elements, and
+    returning all of them fills the context window without informing the agent.
+    The first `limit` elements are returned (default 60) along with the visible
+    page text (default 4000 characters).
+
+    When the page is larger, the response says so:
+
+    - `total_items` — how many elements the page actually has
+    - `returned` — how many you got
+    - `truncated` — whether anything was withheld
+    - `next_offset` — pass this back as `offset` to continue where this left off
+
+    Raise `limit` (up to 500) and `max_text` (up to 40000) when you need more;
+    both are clamped, so a large request is served at the ceiling rather than
+    refused. If `truncated` is true and you are looking for a specific element,
+    page for it with `browse_wait_for` rather than paging blindly.
     """
     try:
         data = browser.snapshot()
-        return {"ok": True, **data}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+    items = data.get("items") or []
+    total = len(items)
+    start = max(0, int(offset or 0))
+    cap = _clamp(limit, 0, SNAPSHOT_MAX_ITEMS, SNAPSHOT_DEFAULT_ITEMS)
+    window = items[start : start + cap] if cap else []
+    text_cap = _clamp(max_text, 0, SNAPSHOT_MAX_TEXT, SNAPSHOT_DEFAULT_TEXT)
+    body, body_len, body_cut = _truncate_text(data.get("body", ""), text_cap)
+
+    out = dict(data)
+    out["ok"] = True
+    out["items"] = window
+    out["body"] = body
+    out["total_items"] = total
+    out["returned"] = len(window)
+    out["offset"] = start
+    if body_cut:
+        out["body_truncated"] = True
+        out["body_total_chars"] = body_len
+    more = start + len(window) < total
+    out["truncated"] = more or body_cut
+    if more:
+        out["next_offset"] = start + len(window)
+        out["next_offset_note"] = (
+            f"more elements remain: pass next_offset={start + len(window)} "
+            "to continue, or raise limit"
+        )
+    return out
 
 
 def tool_browse_screenshot(browser, *_args, **_kw) -> dict:
@@ -263,13 +371,49 @@ def tool_browse_screenshot(browser, *_args, **_kw) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def tool_browse_extract(browser, selector: str | None = None, ref: str | None = None) -> dict:
-    """Extract text from the first element matching a selector or ref."""
+def tool_browse_extract(
+    browser,
+    selector: str | None = None,
+    ref: str | None = None,
+    max_chars: int | None = None,
+) -> dict:
+    """Extract text from the first element matching a selector or ref.
+
+    Reach for this when you know which element holds the answer — a price, a
+    heading, the text of one row. If you do not know yet, use
+    `browse_snapshot` and pick a ref from what it returned.
+
+    Give it **either** `ref` **or** `selector`, never both. A ref comes from a
+    snapshot and is only valid for as long as that element is still on the page;
+    a reused ref is refused rather than guessed at, so take a fresh snapshot
+    rather than retrying an old ref.
+
+    **Bounded by default** at 8000 characters. A longer result sets
+    `truncated: true` and reports `total_chars`, so a partial read is never
+    mistaken for a whole one. Raise `max_chars` (up to 100000) to read more;
+    it is clamped, not refused.
+    """
     try:
         sel = _resolve(browser, ref, selector)
-        return {"ok": True, **browser.extract(sel)}
+        data = browser.extract(sel)
     except Exception as exc:
         return _error(exc, _candidates(browser))
+
+    cap = _clamp(max_chars, 0, EXTRACT_MAX_CHARS, EXTRACT_DEFAULT_CHARS)
+    out = dict(data)
+    out["ok"] = True
+    for key in ("text", "value", "html"):
+        if key in out and out[key] is not None:
+            clipped, total, cut = _truncate_text(out[key], cap)
+            out[key] = clipped
+            if cut:
+                out["truncated"] = True
+                out["total_chars"] = total
+                out["truncated_note"] = (
+                    f"{key} was {total} characters; {len(clipped)} returned. "
+                    f"Raise max_chars (max {EXTRACT_MAX_CHARS}) to read the rest."
+                )
+    return out
 
 
 def tool_browse_eval(browser, expression: str, reason: str | None = None) -> dict:

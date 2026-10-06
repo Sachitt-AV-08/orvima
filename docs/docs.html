@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orvima — Documentation</title>
+<meta name="description" content="orvima: self-hosted browser agent. 22 browse_* tools, HTTP API, MCP prompts. Real browser, local-first, verified steps.">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <nav>
+    <a class="brand" href="#top">
+      <img src="mark.svg" alt="" width="22" height="21">
+      <span>orvima</span>
+    </a>
+    <div class="navlinks">
+      <a href="#tool-reference">Tools</a>
+      <a href="#api-reference">API</a>
+      <a href="#mcp-configs">MCP Configs</a>
+      <a href="#mcp-prompts">Prompts</a>
+      <a href="#architecture">Architecture</a>
+      <a href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <p class="eyebrow">MIT · self-hosted · nothing leaves your machine</p>
+    <h1>orvima — Documentation</h1>
+    <p class="lede">Every tool, endpoint, and workflow. All numbers measured, not remembered.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn" href="#tool-reference">Start with the tools</a>
+    </div>
+  </section>
+
+  <section id="tool-reference">
+<h2>Tool Reference — all 22 <code>browse_*</code> tools</h2>
+<p class="section-lede">Every tool is dict-in, dict-out with <code>verified</code> on every action.</p>
+<article class="tool">
+<h3><code>browse_navigate</code> <span class="badge open-world">open-world</span></h3>
+<p>Open a URL. Waits for the page to be interactive and returns URL + title.  Optional ``expect_url`` / ``expect_text`` state what the page should look like once it has loaded. If one is given and does not come true within ``expect_timeout_ms``, the call fails with the mismatch rather than reporting a successful navigation - which is how a redirect to a login page or the wrong account goes unnoticed. Omit them for today's behaviour.  The check is the same on every backend, real browser or offline. A backend that cannot read the page it claims to have reached reports ``verified: false`` rather than ``verified: true``.</p>
+<p class="why"><strong>Why these hints:</strong> changes the current page and loads a URL the caller did not verify</p>
+</article>
+<article class="tool">
+<h3><code>browse_click</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Click an element by CSS selector OR stable ref (e.g. 'e12' from snapshot).  Prefer refs — they survive DOM churn. Returns ``verified: true`` if the click caused a navigation or DOM mutation; otherwise ``verified: false``.  That check only asks whether *something* changed, which a click on the wrong element can pass. To judge the click against intent instead, state what you expected:  - ``expect_url`` - a substring the resulting url must contain - ``expect_text`` - a substring the resulting page must show - ``expect_count`` - the exact number of matching elements afterwards, and ``expect_for`` a selector to count (default: the element you clicked)  All optional and all polled for up to ``expect_timeout_ms``, since the result of a click is often asynchronous. If any expectation is unmet the call fails and names every mismatch, rather than reporting success.</p>
+<p class="why"><strong>Why these hints:</strong> a click can submit, pay, or delete; the most destructive common action</p>
+</article>
+<article class="tool">
+<h3><code>browse_hover</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Hover an element by selector or ref.</p>
+<p class="why"><strong>Why these hints:</strong> moves the pointer, which can fire hover handlers but submits nothing</p>
+</article>
+<article class="tool">
+<h3><code>browse_select</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Pick an option in a <select> by value or label, using selector or ref.</p>
+<p class="why"><strong>Why these hints:</strong> changes a select's value, which can fire change handlers that submit</p>
+</article>
+<article class="tool">
+<h3><code>browse_wait_for</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Wait until an element matching selector or ref exists.</p>
+<p class="why"><strong>Why these hints:</strong> polls for a selector until it appears; writes nothing</p>
+</article>
+<article class="tool">
+<h3><code>browse_type</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Type text into a field at a human-ish pace, by selector or ref. </p>
+<p class="why"><strong>Why these hints:</strong> enters text into a live page; on a checkout field this writes a credential</p>
+</article>
+<article class="tool">
+<h3><code>browse_fill</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Replace the value of a field wholesale, by selector or ref. </p>
+<p class="why"><strong>Why these hints:</strong> sets a field value; same credential exposure as typing</p>
+</article>
+<article class="tool">
+<h3><code>browse_press</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Press a keyboard key, e.g. Enter, Escape, Tab, ArrowDown.</p>
+<p class="why"><strong>Why these hints:</strong> sends a key; Enter on a focused control can submit a form or a purchase</p>
+</article>
+<article class="tool">
+<h3><code>browse_go_back</code> <span class="badge open-world">open-world</span></h3>
+<p>Go back one page in history.</p>
+<p class="why"><strong>Why these hints:</strong> changes history and re-requests a page; not safely repeatable</p>
+</article>
+<article class="tool">
+<h3><code>browse_wait</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span></h3>
+<p>Pause briefly (e.g. after a submit or before a snapshot).</p>
+<p class="why"><strong>Why these hints:</strong> sleeps; cannot affect any system</p>
+</article>
+<article class="tool">
+<h3><code>browse_scroll</code> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Scroll the viewport: 'down' or 'up'.</p>
+<p class="why"><strong>Why these hints:</strong> changes scroll position only; repeating just moves further</p>
+</article>
+<article class="tool">
+<h3><code>browse_snapshot</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Describe the current page: URL, title, interactive elements and visible text. </p>
+<p class="why"><strong>Why these hints:</strong> reads the accessibility tree and text; writes nothing to the page</p>
+</article>
+<article class="tool">
+<h3><code>browse_screenshot</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Return the current page screenshot as base64 PNG (for the UI and humans).</p>
+<p class="why"><strong>Why these hints:</strong> renders the viewport to an image; writes nothing to the page</p>
+</article>
+<article class="tool">
+<h3><code>browse_extract</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Extract text from the first element matching a selector or ref.  Reach for this when you know which element holds the answer — a price, a heading, the text of one row. If you do not know yet, use `browse_snapshot` and pick a ref from what it returned. </p>
+<p class="why"><strong>Why these hints:</strong> reads text from the page; writes nothing to the page</p>
+</article>
+<article class="tool">
+<h3><code>browse_eval</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Run a JS expression in the page. An escape hatch, not a sandbox. </p>
+<p class="why"><strong>Why these hints:</strong> runs arbitrary JS on the page; its own docstring says escape hatch, not sandbox</p>
+</article>
+<article class="tool">
+<h3><code>browse_eval_audit</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
+<p>Everything browse_eval has run this session: expression, reason, effect.  Newest last. Read this after any eval to see exactly what ran.</p>
+<p class="why"><strong>Why these hints:</strong> reads orvima's own audit log; sentinel tests assert it cannot perform an action</p>
+</article>
+<article class="tool">
+<h3><code>browse_download</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Click something that downloads a file, and save it locally. </p>
+<p class="why"><strong>Why these hints:</strong> writes a file to disk and fetches it from a remote host</p>
+</article>
+<article class="tool">
+<h3><code>browse_set_files</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
+<p>Attach files to an ``<input type=file>``.  ``paths`` are local file paths. Returns ``pageSaw`` - what the page's own FileList ended up holding - because attaching the wrong file silently is how a resume goes out with someone else's CV.  Fails if a path does not exist or the target is not a file input. It will not guess, and it will not attach an empty selection.</p>
+<p class="why"><strong>Why these hints:</strong> hands files to an upload control, sending them off the machine</p>
+</article>
+<article class="tool">
+<h3><code>browse_open_tab</code> <span class="badge open-world">open-world</span></h3>
+<p>Open a URL in a new tab and switch to it.</p>
+<p class="why"><strong>Why these hints:</strong> creates a tab and loads a URL; changes browser state</p>
+</article>
+<article class="tool">
+<h3><code>browse_list_tabs</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span></h3>
+<p>List open tabs with index, url and which one is active.</p>
+<p class="why"><strong>Why these hints:</strong> reads orvima's own tab list; touches no remote system</p>
+</article>
+<article class="tool">
+<h3><code>browse_switch_tab</code> <span class="badge idempotent">idempotent</span></h3>
+<p>Switch to another open tab by its list index.</p>
+<p class="why"><strong>Why these hints:</strong> changes which tab is active; a repeat is a no-op</p>
+</article>
+<article class="tool">
+<h3><code>browse_close_tab</code> <span class="badge idempotent">idempotent</span></h3>
+<p>Close a tab by index (never the last remaining one).</p>
+<p class="why"><strong>Why these hints:</strong> closes a tab, discarding its state; not repeatable once gone</p>
+</article>
+</section>
+
+  <section id="api-reference">
+<h2>HTTP API — <code>http://127.0.0.1:8301</code></h2>
+<p class="section-lede">Local-first. Nothing leaves 127.0.0.1. Your browser, your logins, your machine.</p>
+<article class="endpoint">
+<div class="ep-head"><span class="method get">GET</span> <code>/api/health</code></div>
+<p>Health check</p>
+<pre><code>{"ok": true, "version": "0.1.x"}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method get">GET</span> <code>/api/tools</code></div>
+<p>List all browse_* tools with descriptions</p>
+<pre><code>{"tools": [{"name": "browse_navigate", "description": "..."}, ...]}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method post">POST</span> <code>/api/sessions</code></div>
+<p>Create a new session</p>
+<pre><code>{"mode": "real", "start_url": "", "goal": ""}</code></pre>
+<pre><code>{"ok": true, "session": {"id": "...", "mode": "real", "status": "idle", ...}}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method post">POST</span> <code>/api/sessions/{id}/goal</code></div>
+<p>Run a goal in a session</p>
+<pre><code>{"goal": "summarize the top HN story"}</code></pre>
+<p class="params"><strong>Query params:</strong> wait=true|false, timeout=60</p>
+<pre><code>{"ok": true, "summary": "...", "steps": 12}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method get">GET</span> <code>/api/sessions/{id}/events</code></div>
+<p>SSE stream of session events (snapshots, tool calls, approvals)</p>
+<pre><code>text/event-stream</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method get">GET</span> <code>/api/approvals</code></div>
+<p>List pending approvals (for the phone page)</p>
+<pre><code>{"approvals": [...], "gate": "on", "available": true, ...}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method post">POST</span> <code>/api/approvals/{id}</code></div>
+<p>Approve or deny a pending action</p>
+<pre><code>{"approved": true}</code></pre>
+</article>
+<article class="endpoint">
+<div class="ep-head"><span class="method get">GET</span> <code>/api/gate/stats</code></div>
+<p>Gate health and statistics</p>
+<pre><code>{"evaluated": 12, "degraded": 0, "approval_ttl": 120}</code></pre>
+</article>
+</section>
+
+  <section id="mcp-configs">
+<h2>MCP Configs — paste into your client</h2>
+<p class="section-lede">Real mode is the default. No <code>--mode</code> flag needed.</p>
+<article class="client-config">
+<h3>Claude Desktop</h3>
+<p><strong>File:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\Claude\claude_desktop_config.json (Windows)</code></p>
+<pre><code>{
+  "mcpServers": {
+    "orvima": {
+      "command": "orvima",
+      "args": [
+        "mcp"
+      ],
+      "type": "stdio"
+    }
+  }
+}</code></pre>
+</article>
+<article class="client-config">
+<h3>Claude Code</h3>
+<p><strong>File:</strong> <code>project or global .mcp.json</code></p>
+<p><strong>CLI:</strong> <code>claude mcp add orvima orvima mcp</code></p>
+<pre><code>{
+  "mcpServers": {
+    "orvima": {
+      "command": "orvima",
+      "args": [
+        "mcp"
+      ],
+      "type": "stdio"
+    }
+  }
+}</code></pre>
+</article>
+<article class="client-config">
+<h3>Cursor</h3>
+<p><strong>File:</strong> <code>.cursor/mcp.json</code></p>
+<pre><code>{
+  "mcpServers": {
+    "orvima": {
+      "command": "orvima",
+      "args": [
+        "mcp"
+      ],
+      "type": "stdio"
+    }
+  }
+}</code></pre>
+</article>
+<article class="client-config">
+<h3>Copilot / VS Code</h3>
+<p><strong>File:</strong> <code>settings.json</code></p>
+<pre><code>{
+  "mcp": {
+    "servers": {
+      "orvima": {
+        "command": "orvima",
+        "args": [
+          "mcp"
+        ],
+        "type": "stdio"
+      }
+    }
+  }
+}</code></pre>
+</article>
+</section>
+
+  <section id="mcp-prompts">
+<h2>MCP Prompts — prepared workflows</h2>
+<p class="section-lede">Invoke by name from any MCP client. Each returns a structured prompt template with placeholders you fill in.</p>
+<article class="prompt">
+<h3><code>orvima/verify-action</code></h3>
+<p><strong>Verify an action actually did what you expected</strong> — Run a tool, then snapshot and extract the specific thing you expected to change. Returns a compact verdict. Use this instead of trusting ok: true — the whole point of Orvima is that it re-reads the DOM.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>action_tool</code> (required) — The browse_* tool to run (e.g. browse_click, browse_fill)</li>
+<li><code>action_args</code> (required) — Arguments for that tool (selector/ref/text etc)</li>
+<li><code>expectation</code> (required) — What you expect to see change (e.g. 'cart count becomes 1', 'modal closes')</li>
+<li><code>selector_or_ref</code> (required) — Selector or ref of the element to read after the action</li>
+</ul>
+</article>
+<article class="prompt">
+<h3><code>orvima/extract-table</code></h3>
+<p><strong>Extract a table from the current page as structured data</strong> — Snapshot the page, find the table by selector, then extract rows and cells into a JSON array. Handles pagination by defaulting to the first page — pass continue=true to fetch more.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>selector</code> (required) — CSS selector for the <table> element (or its container)</li>
+<li><code>continue</code> (optional) — Whether to paginate (not implemented yet — reserved)</li>
+</ul>
+</article>
+<article class="prompt">
+<h3><code>orvima/read-article</code></h3>
+<p><strong>Read the main article content from a news/blog page</strong> — Navigate to a URL, strip boilerplate (nav, ads, sidebars), and return the article text. Uses browse_extract on common article selectors with a fallback to the full body text.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>url</code> (required) — The article URL to read</li>
+</ul>
+</article>
+<article class="prompt">
+<h3><code>orvima/compare-prices</code></h3>
+<p><strong>Compare prices on two product pages</strong> — Open two URLs, extract the price from each using a selector, and return a simple comparison. Useful for flight/hotel/shopping checks.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>url_a</code> (required) — First product URL</li>
+<li><code>url_b</code> (required) — Second product URL</li>
+<li><code>selector</code> (required) — CSS selector for the price element on both pages</li>
+</ul>
+</article>
+<article class="prompt">
+<h3><code>orvima/submit-form</code></h3>
+<p><strong>Fill and submit a form with verification</strong> — Navigate to a page, fill fields by selector/ref, submit, then verify the result (success message, redirect, confirmation number). The gate will hold the submit if it looks destructive.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>url</code> (required) — Page containing the form</li>
+<li><code>fields</code> (required) — Array of {selector, value} pairs to fill</li>
+<li><code>submit_selector</code> (required) — Selector for the submit button</li>
+<li><code>expectation</code> (required) — What success looks like (e.g. 'order number appears')</li>
+</ul>
+</article>
+<article class="prompt">
+<h3><code>orvima/wait-and-extract</code></h3>
+<p><strong>Wait for an element to appear, then extract its text</strong> — Polls for a selector (with browse_wait_for), then extracts text. Useful for dynamic content that loads after a click or navigation.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>selector</code> (required) — Selector to wait for and then extract</li>
+<li><code>timeout_ms</code> (optional) — Maximum time to wait (default 10000)</li>
+</ul>
+</article>
+</section>
+
+  
+<section id="architecture">
+<h2>Architecture</h2>
+<p class="section-lede">Three layers, one contract.</p>
+
+<article class="arch-layer">
+  <h3>MCP Server (stdio)</h3>
+  <p>Exposes 22 <code>browse_*</code> tools + 6 prompts over stdio. Any MCP client (Claude, Cursor, Copilot, your agent) gets hands on your browser.</p>
+</article>
+
+<article class="arch-layer">
+  <h3>HTTP API (127.0.0.1:8301)</h3>
+  <p>REST + SSE for the local UI, programmatic control, and the phone approval page. Same contract as the MCP tools.</p>
+</article>
+
+<article class="arch-layer">
+  <h3>Agent Loop</h3>
+  <p>Plans → acts → verifies. <code>browse_snapshot</code> after every step. If <code>verified: false</code>, the loop retries or escalates to the gate.</p>
+</article>
+
+<article class="arch-layer">
+  <h3>Approval Gate (Sentinel)</h3>
+  <p>Classifies every tool call. Destructive actions wait for a human. The gate reads the page <em>now</em>, not when the approval was queued. Expired approvals disappear.</p>
+</article>
+</section>
+
+
+  <section id="proof">
+    <h2>Proof — real runs, not samples</h2>
+    <p>The transcripts below were captured by running orvima, not written by hand.</p>
+    <div class="runners">
+      <div class="runner">
+        <div class="runnerhead"><span class="goal">send a message to Acme support</span><span class="stepcount">9 steps</span></div>
+        <div class="term" id="term-happy" role="region" aria-label="Successful run transcript"></div>
+        <p class="runnerfoot">Every step returns <code>verified: true</code>.</p>
+      </div>
+      <div class="runner highlight">
+        <div class="runnerhead"><span class="goal">delete everything in my account</span><span class="stepcount">held</span></div>
+        <div class="term" id="term-gate" role="region" aria-label="Destructive action held by gate"></div>
+        <p class="runnerfoot">The gate read the selector, judged it <code>outward</code>, and stopped.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>orvima is free and MIT licensed. Self-hosted, local-first, and yours.</p>
+  <p class="small"><a href="https://github.com/Sachitt-AV-08/orvima" target="_blank" rel="noopener">Source</a> · <a href="mailto:sachitt@orvima.in">sachitt@orvima.in</a> · A V Sachitt</p>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

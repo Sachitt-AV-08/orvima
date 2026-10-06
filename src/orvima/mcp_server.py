@@ -15,7 +15,7 @@ import inspect
 import sys
 from typing import Any
 
-from . import tool_annotations, tools
+from . import prompts, tool_annotations, tools
 from .agent import SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
@@ -68,6 +68,43 @@ def register_tools(server: Any, sess: Any) -> bool:
     return supports_annotations
 
 
+def register_prompts(server: Any) -> bool:
+    """Register all prompts on `server`.
+
+    Returns whether the server accepted prompt registrations (mcp >= 2.0).
+    """
+    has_prompt = hasattr(server, "prompt")
+    if not has_prompt:
+        return False
+
+    for p in prompts.list_prompts():
+        # The SDK expects a function that returns the prompt messages.
+        # We pass the definition as metadata and return a simple template.
+        def make_handler(prompt: dict[str, Any]):
+            async def handler(arguments: dict[str, Any] | None = None) -> list[dict[str, str]]:
+                return [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"PROMPT: {prompt['name']}\n"
+                            f"TITLE: {prompt['title']}\n"
+                            f"DESCRIPTION: {prompt['description']}\n"
+                            f"ARGUMENTS: {arguments or {}}"
+                        ),
+                    }
+                ]
+
+            return handler
+
+        server.prompt(
+            name=p["name"],
+            title=p["title"],
+            description=p["description"],
+        )(make_handler(p))
+
+    return True
+
+
 def run(demo: bool = False, name: str = "orvima") -> int:
     """Build a session + MCP server and serve on stdio. Blocks until stdin closes."""
     sess = SessionStore().create(mode="demo" if demo else "real")
@@ -77,6 +114,12 @@ def run(demo: bool = False, name: str = "orvima") -> int:
         print(
             "orvima: this mcp SDK predates tool annotations, so readOnlyHint "
             "and destructiveHint are absent. Install mcp>=2 to get them.",
+            file=sys.stderr,
+        )
+
+    if not register_prompts(server):
+        print(
+            "orvima: this mcp SDK predates prompt support. Install mcp>=2 to get prompts.",
             file=sys.stderr,
         )
 
