@@ -253,7 +253,7 @@ def cmd_doctor(mode: str | None = None) -> int:
     if drives_a_browser and auto_attach:
         detail = f"detected a running browser at {auto_attach} (will attach to it)"
     elif channel:
-        detail = f"would launch {channel}"
+        detail = f"would use {channel}"
     elif bundle:
         detail = "would use bundled Chromium (Playwright)"
     else:
