@@ -66,6 +66,10 @@ def _type_delay_ms() -> int:
     return max(0, int(ms))
 
 
+# Common ports where users run browsers with --remote-debugging-port
+_DEFAULT_DEBUG_PORTS = (9222, 9223, 9224, 9225, 9229)
+
+
 def _cdp_endpoint_alive(attach: str) -> bool:
     """True when something answers on the CDP HTTP endpoint."""
     if attach.startswith(("ws://", "wss://")):
@@ -79,6 +83,21 @@ def _cdp_endpoint_alive(attach: str) -> bool:
         return True  # something is listening, just not on this path
     except Exception:
         return False
+
+
+def _auto_detach_url() -> str | None:
+    """Return a CDP HTTP endpoint (http://127.0.0.1:PORT) if a browser is already
+    running with remote debugging enabled on a common port.
+
+    Scans default ports in order and returns the first one that answers
+    /json/version with a valid browser response. This lets orvima adapt to
+    the user's already-running Brave/Chrome/Edge instead of launching its own.
+    """
+    for port in _DEFAULT_DEBUG_PORTS:
+        url = f"http://127.0.0.1:{port}"
+        if _cdp_endpoint_alive(url):
+            return url
+    return None
 
 
 def _cdp_page_sockets(attach: str) -> list[dict]:

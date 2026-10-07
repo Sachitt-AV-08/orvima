@@ -243,6 +243,21 @@ def cmd_doctor(mode: str | None = None) -> int:
     channel = detect_channel()
     bundle = bundled_chromium_path() if not channel else None
     browser_ok = channel is not None or bundle is not None
+    # In real mode, also check for a running browser with remote debugging
+    # that orvima can auto-attach to (adapts to the running port).
+    auto_attach = None
+    if drives_a_browser:
+        from .browser import _auto_detach_url
+        auto_attach = _auto_detach_url()
+    detail = ""
+    if drives_a_browser and auto_attach:
+        detail = f"detected a running browser at {auto_attach} (will attach to it)"
+    elif channel:
+        detail = f"would launch {channel}"
+    elif bundle:
+        detail = "would use bundled Chromium (Playwright)"
+    else:
+        detail = "no Chrome/Edge/Chromium/Brave found on PATH; run 'playwright install chromium' for a real browser"
     checks.append(
         {
             "name": "Browser",
@@ -250,16 +265,7 @@ def cmd_doctor(mode: str | None = None) -> int:
             # needs one. Reporting it as a failure would be noise; reporting it
             # as ready would be the lie this check used to tell.
             "ok": browser_ok or not drives_a_browser,
-            "detail": (
-                f"would use {channel}"
-                if channel
-                else (
-                    "would use bundled Chromium (Playwright)"
-                    if bundle
-                    else "no Chrome/Edge/Chromium/Brave found on PATH; "
-                    "run 'playwright install chromium' for a real browser"
-                )
-            ),
+            "detail": detail,
         }
     )
 
