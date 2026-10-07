@@ -5,11 +5,11 @@ from __future__ import annotations
 import socket
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from orvima.browser import _auto_detach_url, _cdp_endpoint_alive, _DEFAULT_DEBUG_PORTS
+from orvima.browser import _DEFAULT_DEBUG_PORTS, _auto_detach_url, _cdp_endpoint_alive
 
 
 class _FakeCDPHandler(BaseHTTPRequestHandler):
@@ -99,7 +99,6 @@ def test_auto_detach_url_picks_first_live_port():
 
 def test_auto_detach_url_skips_dead_ports():
     # Ensure it scans in order and returns the first live one
-    dead_port = _DEFAULT_DEBUG_PORTS[0]
     live_port = _DEFAULT_DEBUG_PORTS[1]
 
     # dead port: nothing listening
@@ -148,7 +147,7 @@ class TestBrowserControllerAutoAttach:
         assert bc._attach is None
         # The effective target would be the auto-detected one
         from orvima.browser import _auto_detach_url as real_auto
-        target = bc._attach or real_auto()
+        _ = bc._attach or real_auto()
         # Just verify the code path exists
         assert hasattr(bc, "start")
 
