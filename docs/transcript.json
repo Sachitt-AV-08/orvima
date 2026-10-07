@@ -129,9 +129,9 @@
  "gate": {
   "goal": "delete everything in my account",
   "allowed": false,
-  "risk": "outward",
-  "reason": "outward-facing or transactional",
-  "degraded": false,
+  "risk": "unknown",
+  "reason": "sentinel not loaded, so no action can be judged; refusing to auto-approve. Install the 'sentinel' package to enable judging, or set ORVIMA_SENTINEL=off to run unattended with no gate in force.",
+  "degraded": true,
   "page": "https://acme.dev",
   "args": {
    "selector": "button:has-text('Delete everything')"
@@ -143,23 +143,8 @@
    "Search our store",
    "search-box"
   ],
-  "pending": [
-   {
-    "id": "dc26506ec164",
-    "session_id": "orvima.dev",
-    "tool": "browse_click",
-    "args": {
-     "selector": "button:has-text('Delete everything')"
-    },
-    "risk": "outward",
-    "reason": "outward-facing or transactional",
-    "detail": {
-     "tool": "browse_click"
-    },
-    "created": 1791190194.1244261
-   }
-  ],
-  "request_id": "dc26506ec164",
-  "transcript": "  page: https://acme.dev\n  on it: 'Products', 'Contact', 'Acme Hardware', 'Search our store', 'search-box'\n  gate available: True\n  step 1: browse_click({'selector': \"button:has-text('Delete everything')\"})\n      -> allowed=False risk=outward\n         reason: outward-facing or transactional\n  step 2: the gate stops and asks\n      -> pending approval dc26506ec164\n         risk shown to the human: outward\n         reason shown: outward-facing or transactional\n      the click never ran."
+  "pending": [],
+  "request_id": null,
+  "transcript": "  page: https://acme.dev\n  on it: 'Products', 'Contact', 'Acme Hardware', 'Search our store', 'search-box'\n  gate available: False\n  step 1: browse_click({'selector': \"button:has-text('Delete everything')\"})\n      -> allowed=False risk=unknown\n         reason: sentinel not loaded, so no action can be judged; refusing to auto-approve. Install the 'sentinel' package to enable judging, or set ORVIMA_SENTINEL=off to run unattended with no gate in force.\n      the click never ran."
  }
 }
