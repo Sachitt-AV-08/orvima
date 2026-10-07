@@ -237,8 +237,7 @@ class TestTheTranscriptIsCapturedNotComposed:
         assert gate["risk"], "a refusal must name the risk that caused it"
         assert "allowed=False" in gate["transcript"]
         assert "Delete everything" in gate["transcript"]
-        # In degraded mode (sentinel unavailable), the gate refuses without queuing
-        # an approval. In normal mode, it queues a pending approval for a human.
+        # With sentinel available, the gate queues a pending approval for a human
         if gate.get("degraded"):
             assert not gate.get("pending"), "degraded gate should not queue approvals"
         else:
