@@ -11,6 +11,7 @@ This produces a single HTML file with:
 
 from __future__ import annotations
 
+import html
 import inspect
 import json
 import pathlib
@@ -25,6 +26,23 @@ from orvima import prompts
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
+
+
+def _markup(text: str) -> str:
+    """Escape a data field, then honour its inline code marks.
+
+    Docstrings and prompt descriptions describe markup *as text* —
+    `browse_select` says "Pick an option in a `<select>`", `browse_set_files`
+    says ``` ``<input type=file>`` ```, a prompt argument mentions `<table>`.
+    Injected raw, those became live widgets on the docs page: a file picker
+    nobody opened, a dropdown eating its own sentence. And the backticks
+    around every inline code span printed literally. Escape first — escaping
+    leaves backticks alone — then turn the code marks into `<code>`.
+    """
+    text = html.escape(text or "")
+    text = re.sub(r"``([^`]+)``", r"<code>\1</code>", text)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    return text
 
 
 def get_tool_docstrings() -> list[dict]:
@@ -162,9 +180,11 @@ def get_mcp_configs() -> dict:
 def render_tool_reference(tools_data: list[dict]) -> str:
     """Render the full tool reference section."""
     out = []
-    out.append('<section id="tool-reference">')
-    out.append('<h2>Tool Reference — all 22 <code>browse_*</code> tools</h2>')
+    out.append('<section id="tool-reference" class="docsec">')
+    # Counted, not typed: the heading used to say 22 for ever.
+    out.append(f'<h2>Tool Reference — all {len(tools_data)} <code>browse_*</code> tools</h2>')
     out.append('<p class="section-lede">Every tool is dict-in, dict-out with <code>verified</code> on every action.</p>')
+    out.append('<div class="grid two">')
 
     for t in tools_data:
         badges = []
@@ -179,10 +199,11 @@ def render_tool_reference(tools_data: list[dict]) -> str:
 
         out.append(f'<article class="tool">')
         out.append(f'<h3><code>{t["name"]}</code> {" ".join(badges)}</h3>')
-        out.append(f'<p>{t["summary"]}</p>')
+        out.append(f'<p>{_markup(t["summary"])}</p>')
         if t["why"]:
-            out.append(f'<p class="why"><strong>Why these hints:</strong> {t["why"]}</p>')
+            out.append(f'<p class="why"><strong>Why these hints:</strong> {_markup(t["why"])}</p>')
         out.append(f'</article>')
+    out.append('</div>')
     out.append('</section>')
     return "\n".join(out)
 
@@ -190,21 +211,23 @@ def render_tool_reference(tools_data: list[dict]) -> str:
 def render_api_reference(api: dict) -> str:
     """Render the HTTP API reference section."""
     out = []
-    out.append(f'<section id="api-reference">')
+    out.append(f'<section id="api-reference" class="docsec">')
     out.append(f'<h2>HTTP API — <code>{api["base"]}</code></h2>')
     out.append('<p class="section-lede">Local-first. Nothing leaves 127.0.0.1. Your browser, your logins, your machine.</p>')
+    out.append('<div class="grid two">')
 
     for ep in api["endpoints"]:
         out.append('<article class="endpoint">')
         out.append(f'<div class="ep-head"><span class="method {ep["method"].lower()}">{ep["method"]}</span> <code>{ep["path"]}</code></div>')
-        out.append(f'<p>{ep["summary"]}</p>')
+        out.append(f'<p>{_markup(ep["summary"])}</p>')
         if "request" in ep:
-            out.append(f'<pre><code>{ep["request"]}</code></pre>')
+            out.append(f'<pre><code>{_markup(ep["request"])}</code></pre>')
         if "params" in ep:
-            out.append(f'<p class="params"><strong>Query params:</strong> {ep["params"]}</p>')
+            out.append(f'<p class="params"><strong>Query params:</strong> {_markup(ep["params"])}</p>')
         if "response" in ep:
-            out.append(f'<pre><code>{ep["response"]}</code></pre>')
+            out.append(f'<pre><code>{_markup(ep["response"])}</code></pre>')
         out.append('</article>')
+    out.append('</div>')
     out.append('</section>')
     return "\n".join(out)
 
@@ -212,18 +235,20 @@ def render_api_reference(api: dict) -> str:
 def render_mcp_configs(configs: dict) -> str:
     """Render MCP config examples per client."""
     out = []
-    out.append('<section id="mcp-configs">')
+    out.append('<section id="mcp-configs" class="docsec">')
     out.append('<h2>MCP Configs — paste into your client</h2>')
     out.append('<p class="section-lede">Real mode is the default. No <code>--mode</code> flag needed.</p>')
+    out.append('<div class="grid two">')
 
     for client, data in configs.items():
         out.append(f'<article class="client-config">')
         out.append(f'<h3>{client}</h3>')
-        out.append(f'<p><strong>File:</strong> <code>{data["file"]}</code></p>')
+        out.append(f'<p><strong>File:</strong> <code>{_markup(data["file"])}</code></p>')
         if "cli" in data:
-            out.append(f'<p><strong>CLI:</strong> <code>{data["cli"]}</code></p>')
-        out.append(f'<pre><code>{json.dumps(data["config"], indent=2)}</code></pre>')
+            out.append(f'<p><strong>CLI:</strong> <code>{_markup(data["cli"])}</code></p>')
+        out.append(f'<pre><code>{_markup(json.dumps(data["config"], indent=2))}</code></pre>')
         out.append('</article>')
+    out.append('</div>')
     out.append('</section>')
     return "\n".join(out)
 
@@ -231,36 +256,41 @@ def render_mcp_configs(configs: dict) -> str:
 def render_prompts() -> str:
     """Render the MCP prompts section."""
     out = []
-    out.append('<section id="mcp-prompts">')
+    out.append('<section id="mcp-prompts" class="docsec">')
     out.append('<h2>MCP Prompts — prepared workflows</h2>')
     out.append('<p class="section-lede">Invoke by name from any MCP client. Each returns a structured prompt template with placeholders you fill in.</p>')
+    out.append('<div class="grid two">')
 
     for p in prompts.list_prompts():
         out.append('<article class="prompt">')
         out.append(f'<h3><code>{p["name"]}</code></h3>')
-        out.append(f'<p><strong>{p["title"]}</strong> — {p["description"]}</p>')
+        out.append(f'<p><strong>{_markup(p["title"])}</strong> — {_markup(p["description"])}</p>')
         if p["arguments"]:
             out.append('<p><strong>Arguments:</strong></p>')
             out.append('<ul>')
             for arg in p["arguments"]:
                 req = " (required)" if arg["required"] else " (optional)"
-                out.append(f'<li><code>{arg["name"]}</code>{req} — {arg["description"]}</li>')
+                out.append(f'<li><code>{arg["name"]}</code>{req} — {_markup(arg["description"])}</li>')
             out.append('</ul>')
         out.append('</article>')
+    out.append('</div>')
     out.append('</section>')
     return "\n".join(out)
 
 
 def render_architecture() -> str:
     """Render the architecture section."""
-    return """
-<section id="architecture">
+    n_tools = len(tools.TOOLS)
+    n_prompts = len(prompts.list_prompts())
+    return f"""
+<section id="architecture" class="docsec">
 <h2>Architecture</h2>
 <p class="section-lede">Three layers, one contract.</p>
 
+<div class="grid two">
 <article class="arch-layer">
   <h3>MCP Server (stdio)</h3>
-  <p>Exposes 22 <code>browse_*</code> tools + 6 prompts over stdio. Any MCP client (Claude, Cursor, Copilot, your agent) gets hands on your browser.</p>
+  <p>Exposes {n_tools} <code>browse_*</code> tools + {n_prompts} prompts over stdio. Any MCP client (Claude, Cursor, Copilot, your agent) gets hands on your browser.</p>
 </article>
 
 <article class="arch-layer">
@@ -277,17 +307,23 @@ def render_architecture() -> str:
   <h3>Approval Gate (Sentinel)</h3>
   <p>Classifies every tool call. Destructive actions wait for a human. The gate reads the page <em>now</em>, not when the approval was queued. Expired approvals disappear.</p>
 </article>
+</div>
 </section>
 """
 
 
-def main() -> int:
+def render() -> str:
+    """Build the full docs.html text.
+
+    Split out from main() so the test suite can diff the shipped page
+    against a fresh generation without writing anything to disk.
+    """
     tools_data = get_tool_docstrings()
     api = get_api_reference()
     mcp_configs = get_mcp_configs()
 
     # Build the full HTML
-    html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -337,7 +373,7 @@ def main() -> int:
 
   {render_architecture()}
 
-  <section id="proof">
+  <section id="proof" class="proof">
     <h2>Proof — real runs, not samples</h2>
     <p>The transcripts below were captured by running orvima, not written by hand.</p>
     <div class="runners">
@@ -365,6 +401,9 @@ def main() -> int:
 </body>
 </html>"""
 
+
+def main() -> int:
+    html = render()
     out_path = DOCS / "docs.html"
     out_path.write_text(html, encoding="utf-8")
     print(f"wrote {out_path} ({out_path.stat().st_size} bytes)")

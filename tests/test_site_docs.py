@@ -20,6 +20,9 @@ file makes the site falsifiable:
 4. **The rendered page is the thing being tested.** Layout, tap targets and
    console errors are checked in a real browser, because a source grep cannot
    tell whether text wrapped.
+5. **The docs page cannot drift.** docs.html is a build artifact sharing this
+   stylesheet, so it is diffed against its generator, its classes are checked
+   against the CSS, and its sections are rendered to prove they kept their box.
 
 Run: pytest tests/test_site_docs.py -q
 """
@@ -158,6 +161,29 @@ class TestTheToolCountIsNotALie:
         assert re.search(rf"\b{total / 1000:.1f}k\b.{{0,40}}?lines of source", html), (
             f"page should state the real source line count ({total}, i.e. {total / 1000:.1f}k)"
         )
+        # The test count is the number easiest to let drift, because nothing
+        # else on the page depends on it. Collected, not estimated: `addopts`
+        # supplies the first `-q`, the command adds the second, and double-quiet
+        # collect prints one `file: count` line per test file.
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO),
+            timeout=300,
+        )
+        counts = [
+            int(n)
+            for n in re.findall(r"^tests[/\\]\S+\.py: (\d+)$", proc.stdout, flags=re.M)
+        ]
+        assert counts, (
+            "collection printed no per-file counts, so the page's test number "
+            f"cannot be checked at all (exit {proc.returncode})"
+        )
+        collected = sum(counts)
+        assert re.search(rf"<b>{collected}</b><span>tests,", html), (
+            f"page should state the real test count ({collected})"
+        )
 
 
 # --------------------------------------------------------------------------
@@ -282,54 +308,66 @@ class TestTheTranscriptIsCapturedNotComposed:
 # --------------------------------------------------------------------------
 
 
+def css_rules(css: str) -> dict[tuple[str, str], set[str]]:
+    """Map (at-rule context, exact selector) -> the bodies seen for it.
+
+    Two details matter, and getting either wrong makes the check useless.
+    Pseudo-classes are kept, because `.btn` and `.btn:hover` are the same
+    class on purpose. Media queries are part of the key, because `.hero` at
+    the top level and `.hero` inside `max-width: 620px` are a deliberate
+    override rather than a collision. Module-level because the docs-page
+    checks below read this same stylesheet.
+    """
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    found: dict[tuple[str, str], set[str]] = {}
+
+    def walk(text: str, ctx: str) -> None:
+        while text:
+            # A newline between two rules is not an error: after any block
+            # the remainder starts with whitespace, and a comment strips to
+            # whitespace too. Without this lstrip, `re.match` fails on the
+            # leading newline before an @media block, the walk stops there,
+            # and every rule after the block silently escapes the checks --
+            # which is exactly how the duplicate-rule pile-up in this
+            # stylesheet went unnoticed.
+            text = text.lstrip()
+            if not text:
+                break
+            at = re.match(r"@([\w-]+)([^{]*)\{", text)
+            if at:
+                name, cond, rest = at.group(1), at.group(2).strip(), text[at.end():]
+                depth, i = 1, 0
+                while i < len(rest) and depth:
+                    if rest[i] == "{":
+                        depth += 1
+                    elif rest[i] == "}":
+                        depth -= 1
+                    i += 1
+                walk(rest[: i - 1], f"{ctx}@{name} {cond}".strip())
+                text = rest[i:]
+                continue
+            block = re.match(r"([^{}]+)\{([^{}]*)\}", text)
+            if not block:
+                return
+            body = block.group(2).strip()
+            for one in block.group(1).split(","):
+                sel = re.sub(r"\s+", " ", one).strip()
+                if sel and body:
+                    found.setdefault((ctx, sel), set()).add(body)
+            text = text[block.end():]
+
+    walk(css, "")
+    return found
+
+
 class TestTheStylesheetHasNoSilentCollisions:
     """The bug this guards: `.steps` styled the runner's step count *and* the
     gate's ordered list, so `white-space: nowrap` reached the whole gate and the
     page grew 700px sideways. `.btn` and `.btn:hover` are the same class doing
     two things on purpose, so only an identical *base* selector counts."""
 
-    def _rules(self, css: str) -> dict[tuple[str, str], set[str]]:
-        """Map (at-rule context, exact selector) -> the bodies seen for it.
-
-        Two details matter, and getting either wrong makes the check useless.
-        Pseudo-classes are kept, because `.btn` and `.btn:hover` are the same
-        class on purpose. Media queries are part of the key, because `.hero` at
-        the top level and `.hero` inside `max-width: 620px` are a deliberate
-        override rather than a collision.
-        """
-        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        found: dict[tuple[str, str], set[str]] = {}
-
-        def walk(text: str, ctx: str) -> None:
-            while text:
-                at = re.match(r"@([\w-]+)([^{]*)\{", text)
-                if at:
-                    name, cond, rest = at.group(1), at.group(2).strip(), text[at.end():]
-                    depth, i = 1, 0
-                    while i < len(rest) and depth:
-                        if rest[i] == "{":
-                            depth += 1
-                        elif rest[i] == "}":
-                            depth -= 1
-                        i += 1
-                    walk(rest[: i - 1], f"{ctx}@{name} {cond}".strip())
-                    text = rest[i:]
-                    continue
-                block = re.match(r"([^{}]+)\{([^{}]*)\}", text)
-                if not block:
-                    return
-                body = block.group(2).strip()
-                for one in block.group(1).split(","):
-                    sel = re.sub(r"\s+", " ", one).strip()
-                    if sel and body:
-                        found.setdefault((ctx, sel), set()).add(body)
-                text = text[block.end():]
-
-        walk(css, "")
-        return found
-
     def test_no_selector_is_styled_twice_with_different_rules(self, css: str) -> None:
-        clashes = {k: v for k, v in self._rules(css).items() if len(v) > 1}
+        clashes = {k: v for k, v in css_rules(css).items() if len(v) > 1}
         assert not clashes, (
             "these selectors have more than one distinct rule block, so a later "
             f"one silently overrides the earlier: {sorted(cl[1] for cl in clashes)}\n"
@@ -342,7 +380,7 @@ class TestTheStylesheetHasNoSilentCollisions:
         used = {c for group in groups for c in group.split()}
         styled = {
             name
-            for (_, sel) in self._rules(css)
+            for (_, sel) in css_rules(css)
             for name in re.findall(r"\.([A-Za-z][\w-]*)", sel)
         }
         unstyled = used - styled
@@ -566,6 +604,14 @@ class TestTheRenderedPage:
         pg.click(".tab[data-os='win']")
         assert pg.inner_text("#installcmd") == first
 
+    def test_the_difference_minis_render(self, pages) -> None:
+        """main.js guards these elements so docs.html can share the script;
+        the guard must not become a silent no-op on the page that has them."""
+        pg, _ = pages["desktop"]
+        for sel in ("#term-other", "#term-orvima"):
+            text = pg.inner_text(sel)
+            assert "ok=True" in text, f"{sel} did not paint: {text!r}"
+
     def test_every_anchor_resolves(self, pages) -> None:
         """A dead in-page link on a one-page site is a dead end for a visitor."""
         pg, _ = pages["desktop"]
@@ -584,4 +630,128 @@ class TestTheRenderedPage:
                  .map(i => i.getAttribute('src'))"""
         )
         assert not missing, f"images that did not load: {missing}"
+
+
+# --------------------------------------------------------------------------
+# 5. the docs page
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def docs_html() -> str:
+    return (DOCS / "docs.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def docs_page(browser, served):
+    """The generated page, loaded the way a visitor loads it."""
+    pg = browser.new_page(viewport={"width": 1280, "height": 900})
+    errors: list[str] = []
+
+    def record(msg, sink=errors):
+        if msg.type == "error":
+            sink.append(msg.text)
+
+    def failed(exc, sink=errors):
+        sink.append(str(exc))
+
+    pg.on("console", record)
+    pg.on("pageerror", failed)
+    pg.goto(served + "docs.html", wait_until="networkidle")
+    pg.wait_for_timeout(600)
+    yield pg, errors
+    pg.close()
+
+
+class TestTheDocsPageIsNotForgotten:
+    """docs.html is generated by docs/build_docs.py and ships beside the
+    index, sharing this stylesheet while using classes the index never does.
+    It drifted twice: from its generator (the page is a build artifact with
+    nothing enforcing a rebuild), and from the stylesheet (when the index's
+    sections were renamed, the generic rule that dressed docs.html went with
+    them, and every section collapsed to flush-left text with no separators).
+    Both failure modes live here."""
+
+    def test_the_shipped_page_matches_its_generator(self, docs_html: str) -> None:
+        sys.path.insert(0, str(DOCS))
+        try:
+            import build_docs
+        finally:
+            sys.path.remove(str(DOCS))
+        assert build_docs.render() == docs_html, (
+            "docs/docs.html is stale -- rebuild it: python docs/build_docs.py"
+        )
+
+    def test_every_class_on_the_docs_page_is_styled(self, docs_html: str, css: str) -> None:
+        """The index's coverage check reads index.html; docs.html has its own
+        class vocabulary (`.badge`, `.endpoint`, `.docsec`...) that it also    has to keep in the stylesheet."""
+        groups = set(re.findall(r'class="([^"]+)"', docs_html))
+        used = {c for group in groups for c in group.split()}
+        styled = {
+            name
+            for (_, sel) in css_rules(css)
+            for name in re.findall(r"\.([A-Za-z][\w-]*)", sel)
+        }
+        unstyled = used - styled
+        assert not unstyled, f"docs.html classes with no CSS rule: {sorted(unstyled)}"
+
+    def test_the_docs_page_names_exactly_the_real_tools(self, docs_html: str) -> None:
+        """The generator lists every tool, but its prose names some by hand;
+        `browse_snapshot` in the architecture section would still be there
+        after the tool was deleted, which is drift the freshness check above
+        cannot see because the prose lives in the generator."""
+        named = set(re.findall(r"browse_[a-z_]+", docs_html))
+        assert named, "the docs page should name its tools at all"
+        real = tool_names()
+        assert named == real, (
+            f"docs.html drifts from orvima.tools: invented {sorted(named - real)}, "
+            f"missing {sorted(real - named)}"
+        )
+
+
+class TestTheRenderedDocsPage:
+    """The static checks above prove the rules exist; these prove a browser
+    actually applies them. The padding check is the one that would have
+    caught the collapse: an unstyled section computes padding-left: 0px."""
+
+    def test_the_docs_page_loads_cleanly(self, docs_page) -> None:
+        pg, errors = docs_page
+        assert pg.title(), "no document served"
+        assert not errors, f"console errors: {errors}"
+        over = pg.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+        )
+        assert over <= 1, f"content is {over}px wider than the viewport"
+
+    def test_every_docs_section_has_its_box(self, docs_page) -> None:
+        pg, _ = docs_page
+        for sel in (
+            "#tool-reference",
+            "#api-reference",
+            "#mcp-configs",
+            "#mcp-prompts",
+            "#architecture",
+            "#proof",
+        ):
+            pad = pg.evaluate(
+                f"getComputedStyle(document.querySelector('{sel}')).paddingLeft"
+            )
+            assert pad not in ("0px", ""), f"{sel} has no padding: it is unstyled"
+        assert pg.query_selector(".badge"), "tool badges did not render"
+        assert pg.query_selector(".endpoint .method"), "endpoint methods did not render"
+
+    def test_the_docs_page_renders_the_real_transcripts(self, docs_page) -> None:
+        """main.js serves two pages from one script; a missing element there
+        used to be a console error waiting to happen."""
+        pg, _ = docs_page
+        assert pg.inner_text("#term-happy").strip(), "docs.html renders no transcript"
+
+    def test_every_docs_anchor_resolves(self, docs_page) -> None:
+        pg, _ = docs_page
+        broken = pg.evaluate(
+            """() => [...document.querySelectorAll('a[href^="#"]')]
+                 .map(a => a.getAttribute('href'))
+                 .filter(h => h !== '#' && !document.querySelector(h))"""
+        )
+        assert not broken, f"anchors with no target: {broken}"
 

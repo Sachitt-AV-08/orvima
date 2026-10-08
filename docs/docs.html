@@ -38,17 +38,18 @@
     </div>
   </section>
 
-  <section id="tool-reference">
+  <section id="tool-reference" class="docsec">
 <h2>Tool Reference — all 22 <code>browse_*</code> tools</h2>
 <p class="section-lede">Every tool is dict-in, dict-out with <code>verified</code> on every action.</p>
+<div class="grid two">
 <article class="tool">
 <h3><code>browse_navigate</code> <span class="badge open-world">open-world</span></h3>
-<p>Open a URL. Waits for the page to be interactive and returns URL + title.  Optional ``expect_url`` / ``expect_text`` state what the page should look like once it has loaded. If one is given and does not come true within ``expect_timeout_ms``, the call fails with the mismatch rather than reporting a successful navigation - which is how a redirect to a login page or the wrong account goes unnoticed. Omit them for today's behaviour.  The check is the same on every backend, real browser or offline. A backend that cannot read the page it claims to have reached reports ``verified: false`` rather than ``verified: true``.</p>
+<p>Open a URL. Waits for the page to be interactive and returns URL + title.  Optional <code>expect_url</code> / <code>expect_text</code> state what the page should look like once it has loaded. If one is given and does not come true within <code>expect_timeout_ms</code>, the call fails with the mismatch rather than reporting a successful navigation - which is how a redirect to a login page or the wrong account goes unnoticed. Omit them for today&#x27;s behaviour.  The check is the same on every backend, real browser or offline. A backend that cannot read the page it claims to have reached reports <code>verified: false</code> rather than <code>verified: true</code>.</p>
 <p class="why"><strong>Why these hints:</strong> changes the current page and loads a URL the caller did not verify</p>
 </article>
 <article class="tool">
 <h3><code>browse_click</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
-<p>Click an element by CSS selector OR stable ref (e.g. 'e12' from snapshot).  Prefer refs — they survive DOM churn. Returns ``verified: true`` if the click caused a navigation or DOM mutation; otherwise ``verified: false``.  That check only asks whether *something* changed, which a click on the wrong element can pass. To judge the click against intent instead, state what you expected:  - ``expect_url`` - a substring the resulting url must contain - ``expect_text`` - a substring the resulting page must show - ``expect_count`` - the exact number of matching elements afterwards, and ``expect_for`` a selector to count (default: the element you clicked)  All optional and all polled for up to ``expect_timeout_ms``, since the result of a click is often asynchronous. If any expectation is unmet the call fails and names every mismatch, rather than reporting success.</p>
+<p>Click an element by CSS selector OR stable ref (e.g. &#x27;e12&#x27; from snapshot).  Prefer refs — they survive DOM churn. Returns <code>verified: true</code> if the click caused a navigation or DOM mutation; otherwise <code>verified: false</code>.  That check only asks whether *something* changed, which a click on the wrong element can pass. To judge the click against intent instead, state what you expected:  - <code>expect_url</code> - a substring the resulting url must contain - <code>expect_text</code> - a substring the resulting page must show - <code>expect_count</code> - the exact number of matching elements afterwards, and <code>expect_for</code> a selector to count (default: the element you clicked)  All optional and all polled for up to <code>expect_timeout_ms</code>, since the result of a click is often asynchronous. If any expectation is unmet the call fails and names every mismatch, rather than reporting success.</p>
 <p class="why"><strong>Why these hints:</strong> a click can submit, pay, or delete; the most destructive common action</p>
 </article>
 <article class="tool">
@@ -58,8 +59,8 @@
 </article>
 <article class="tool">
 <h3><code>browse_select</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
-<p>Pick an option in a <select> by value or label, using selector or ref.</p>
-<p class="why"><strong>Why these hints:</strong> changes a select's value, which can fire change handlers that submit</p>
+<p>Pick an option in a &lt;select&gt; by value or label, using selector or ref.</p>
+<p class="why"><strong>Why these hints:</strong> changes a select&#x27;s value, which can fire change handlers that submit</p>
 </article>
 <article class="tool">
 <h3><code>browse_wait_for</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
@@ -93,7 +94,7 @@
 </article>
 <article class="tool">
 <h3><code>browse_scroll</code> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
-<p>Scroll the viewport: 'down' or 'up'.</p>
+<p>Scroll the viewport: &#x27;down&#x27; or &#x27;up&#x27;.</p>
 <p class="why"><strong>Why these hints:</strong> changes scroll position only; repeating just moves further</p>
 </article>
 <article class="tool">
@@ -108,7 +109,7 @@
 </article>
 <article class="tool">
 <h3><code>browse_extract</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
-<p>Extract text from the first element matching a selector or ref.  Reach for this when you know which element holds the answer — a price, a heading, the text of one row. If you do not know yet, use `browse_snapshot` and pick a ref from what it returned. </p>
+<p>Extract text from the first element matching a selector or ref.  Reach for this when you know which element holds the answer — a price, a heading, the text of one row. If you do not know yet, use <code>browse_snapshot</code> and pick a ref from what it returned. </p>
 <p class="why"><strong>Why these hints:</strong> reads text from the page; writes nothing to the page</p>
 </article>
 <article class="tool">
@@ -119,7 +120,7 @@
 <article class="tool">
 <h3><code>browse_eval_audit</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span> <span class="badge open-world">open-world</span></h3>
 <p>Everything browse_eval has run this session: expression, reason, effect.  Newest last. Read this after any eval to see exactly what ran.</p>
-<p class="why"><strong>Why these hints:</strong> reads orvima's own audit log; sentinel tests assert it cannot perform an action</p>
+<p class="why"><strong>Why these hints:</strong> reads orvima&#x27;s own audit log; sentinel tests assert it cannot perform an action</p>
 </article>
 <article class="tool">
 <h3><code>browse_download</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
@@ -128,7 +129,7 @@
 </article>
 <article class="tool">
 <h3><code>browse_set_files</code> <span class="badge destructive">destructive</span> <span class="badge open-world">open-world</span></h3>
-<p>Attach files to an ``<input type=file>``.  ``paths`` are local file paths. Returns ``pageSaw`` - what the page's own FileList ended up holding - because attaching the wrong file silently is how a resume goes out with someone else's CV.  Fails if a path does not exist or the target is not a file input. It will not guess, and it will not attach an empty selection.</p>
+<p>Attach files to an <code>&lt;input type=file&gt;</code>.  <code>paths</code> are local file paths. Returns <code>pageSaw</code> - what the page&#x27;s own FileList ended up holding - because attaching the wrong file silently is how a resume goes out with someone else&#x27;s CV.  Fails if a path does not exist or the target is not a file input. It will not guess, and it will not attach an empty selection.</p>
 <p class="why"><strong>Why these hints:</strong> hands files to an upload control, sending them off the machine</p>
 </article>
 <article class="tool">
@@ -139,7 +140,7 @@
 <article class="tool">
 <h3><code>browse_list_tabs</code> <span class="badge read-only">read-only</span> <span class="badge idempotent">idempotent</span></h3>
 <p>List open tabs with index, url and which one is active.</p>
-<p class="why"><strong>Why these hints:</strong> reads orvima's own tab list; touches no remote system</p>
+<p class="why"><strong>Why these hints:</strong> reads orvima&#x27;s own tab list; touches no remote system</p>
 </article>
 <article class="tool">
 <h3><code>browse_switch_tab</code> <span class="badge idempotent">idempotent</span></h3>
@@ -151,33 +152,35 @@
 <p>Close a tab by index (never the last remaining one).</p>
 <p class="why"><strong>Why these hints:</strong> closes a tab, discarding its state; not repeatable once gone</p>
 </article>
+</div>
 </section>
 
-  <section id="api-reference">
+  <section id="api-reference" class="docsec">
 <h2>HTTP API — <code>http://127.0.0.1:8301</code></h2>
 <p class="section-lede">Local-first. Nothing leaves 127.0.0.1. Your browser, your logins, your machine.</p>
+<div class="grid two">
 <article class="endpoint">
 <div class="ep-head"><span class="method get">GET</span> <code>/api/health</code></div>
 <p>Health check</p>
-<pre><code>{"ok": true, "version": "0.1.x"}</code></pre>
+<pre><code>{&quot;ok&quot;: true, &quot;version&quot;: &quot;0.1.x&quot;}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method get">GET</span> <code>/api/tools</code></div>
 <p>List all browse_* tools with descriptions</p>
-<pre><code>{"tools": [{"name": "browse_navigate", "description": "..."}, ...]}</code></pre>
+<pre><code>{&quot;tools&quot;: [{&quot;name&quot;: &quot;browse_navigate&quot;, &quot;description&quot;: &quot;...&quot;}, ...]}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method post">POST</span> <code>/api/sessions</code></div>
 <p>Create a new session</p>
-<pre><code>{"mode": "real", "start_url": "", "goal": ""}</code></pre>
-<pre><code>{"ok": true, "session": {"id": "...", "mode": "real", "status": "idle", ...}}</code></pre>
+<pre><code>{&quot;mode&quot;: &quot;real&quot;, &quot;start_url&quot;: &quot;&quot;, &quot;goal&quot;: &quot;&quot;}</code></pre>
+<pre><code>{&quot;ok&quot;: true, &quot;session&quot;: {&quot;id&quot;: &quot;...&quot;, &quot;mode&quot;: &quot;real&quot;, &quot;status&quot;: &quot;idle&quot;, ...}}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method post">POST</span> <code>/api/sessions/{id}/goal</code></div>
 <p>Run a goal in a session</p>
-<pre><code>{"goal": "summarize the top HN story"}</code></pre>
+<pre><code>{&quot;goal&quot;: &quot;summarize the top HN story&quot;}</code></pre>
 <p class="params"><strong>Query params:</strong> wait=true|false, timeout=60</p>
-<pre><code>{"ok": true, "summary": "...", "steps": 12}</code></pre>
+<pre><code>{&quot;ok&quot;: true, &quot;summary&quot;: &quot;...&quot;, &quot;steps&quot;: 12}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method get">GET</span> <code>/api/sessions/{id}/events</code></div>
@@ -187,34 +190,36 @@
 <article class="endpoint">
 <div class="ep-head"><span class="method get">GET</span> <code>/api/approvals</code></div>
 <p>List pending approvals (for the phone page)</p>
-<pre><code>{"approvals": [...], "gate": "on", "available": true, ...}</code></pre>
+<pre><code>{&quot;approvals&quot;: [...], &quot;gate&quot;: &quot;on&quot;, &quot;available&quot;: true, ...}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method post">POST</span> <code>/api/approvals/{id}</code></div>
 <p>Approve or deny a pending action</p>
-<pre><code>{"approved": true}</code></pre>
+<pre><code>{&quot;approved&quot;: true}</code></pre>
 </article>
 <article class="endpoint">
 <div class="ep-head"><span class="method get">GET</span> <code>/api/gate/stats</code></div>
 <p>Gate health and statistics</p>
-<pre><code>{"evaluated": 12, "degraded": 0, "approval_ttl": 120}</code></pre>
+<pre><code>{&quot;evaluated&quot;: 12, &quot;degraded&quot;: 0, &quot;approval_ttl&quot;: 120}</code></pre>
 </article>
+</div>
 </section>
 
-  <section id="mcp-configs">
+  <section id="mcp-configs" class="docsec">
 <h2>MCP Configs — paste into your client</h2>
 <p class="section-lede">Real mode is the default. No <code>--mode</code> flag needed.</p>
+<div class="grid two">
 <article class="client-config">
 <h3>Claude Desktop</h3>
 <p><strong>File:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\Claude\claude_desktop_config.json (Windows)</code></p>
 <pre><code>{
-  "mcpServers": {
-    "orvima": {
-      "command": "orvima",
-      "args": [
-        "mcp"
+  &quot;mcpServers&quot;: {
+    &quot;orvima&quot;: {
+      &quot;command&quot;: &quot;orvima&quot;,
+      &quot;args&quot;: [
+        &quot;mcp&quot;
       ],
-      "type": "stdio"
+      &quot;type&quot;: &quot;stdio&quot;
     }
   }
 }</code></pre>
@@ -224,13 +229,13 @@
 <p><strong>File:</strong> <code>project or global .mcp.json</code></p>
 <p><strong>CLI:</strong> <code>claude mcp add orvima orvima mcp</code></p>
 <pre><code>{
-  "mcpServers": {
-    "orvima": {
-      "command": "orvima",
-      "args": [
-        "mcp"
+  &quot;mcpServers&quot;: {
+    &quot;orvima&quot;: {
+      &quot;command&quot;: &quot;orvima&quot;,
+      &quot;args&quot;: [
+        &quot;mcp&quot;
       ],
-      "type": "stdio"
+      &quot;type&quot;: &quot;stdio&quot;
     }
   }
 }</code></pre>
@@ -239,13 +244,13 @@
 <h3>Cursor</h3>
 <p><strong>File:</strong> <code>.cursor/mcp.json</code></p>
 <pre><code>{
-  "mcpServers": {
-    "orvima": {
-      "command": "orvima",
-      "args": [
-        "mcp"
+  &quot;mcpServers&quot;: {
+    &quot;orvima&quot;: {
+      &quot;command&quot;: &quot;orvima&quot;,
+      &quot;args&quot;: [
+        &quot;mcp&quot;
       ],
-      "type": "stdio"
+      &quot;type&quot;: &quot;stdio&quot;
     }
   }
 }</code></pre>
@@ -254,24 +259,26 @@
 <h3>Copilot / VS Code</h3>
 <p><strong>File:</strong> <code>settings.json</code></p>
 <pre><code>{
-  "mcp": {
-    "servers": {
-      "orvima": {
-        "command": "orvima",
-        "args": [
-          "mcp"
+  &quot;mcp&quot;: {
+    &quot;servers&quot;: {
+      &quot;orvima&quot;: {
+        &quot;command&quot;: &quot;orvima&quot;,
+        &quot;args&quot;: [
+          &quot;mcp&quot;
         ],
-        "type": "stdio"
+        &quot;type&quot;: &quot;stdio&quot;
       }
     }
   }
 }</code></pre>
 </article>
+</div>
 </section>
 
-  <section id="mcp-prompts">
+  <section id="mcp-prompts" class="docsec">
 <h2>MCP Prompts — prepared workflows</h2>
 <p class="section-lede">Invoke by name from any MCP client. Each returns a structured prompt template with placeholders you fill in.</p>
+<div class="grid two">
 <article class="prompt">
 <h3><code>orvima/verify-action</code></h3>
 <p><strong>Verify an action actually did what you expected</strong> — Run a tool, then snapshot and extract the specific thing you expected to change. Returns a compact verdict. Use this instead of trusting ok: true — the whole point of Orvima is that it re-reads the DOM.</p>
@@ -279,7 +286,7 @@
 <ul>
 <li><code>action_tool</code> (required) — The browse_* tool to run (e.g. browse_click, browse_fill)</li>
 <li><code>action_args</code> (required) — Arguments for that tool (selector/ref/text etc)</li>
-<li><code>expectation</code> (required) — What you expect to see change (e.g. 'cart count becomes 1', 'modal closes')</li>
+<li><code>expectation</code> (required) — What you expect to see change (e.g. &#x27;cart count becomes 1&#x27;, &#x27;modal closes&#x27;)</li>
 <li><code>selector_or_ref</code> (required) — Selector or ref of the element to read after the action</li>
 </ul>
 </article>
@@ -288,7 +295,7 @@
 <p><strong>Extract a table from the current page as structured data</strong> — Snapshot the page, find the table by selector, then extract rows and cells into a JSON array. Handles pagination by defaulting to the first page — pass continue=true to fetch more.</p>
 <p><strong>Arguments:</strong></p>
 <ul>
-<li><code>selector</code> (required) — CSS selector for the <table> element (or its container)</li>
+<li><code>selector</code> (required) — CSS selector for the &lt;table&gt; element (or its container)</li>
 <li><code>continue</code> (optional) — Whether to paginate (not implemented yet — reserved)</li>
 </ul>
 </article>
@@ -318,7 +325,7 @@
 <li><code>url</code> (required) — Page containing the form</li>
 <li><code>fields</code> (required) — Array of {selector, value} pairs to fill</li>
 <li><code>submit_selector</code> (required) — Selector for the submit button</li>
-<li><code>expectation</code> (required) — What success looks like (e.g. 'order number appears')</li>
+<li><code>expectation</code> (required) — What success looks like (e.g. &#x27;order number appears&#x27;)</li>
 </ul>
 </article>
 <article class="prompt">
@@ -330,13 +337,15 @@
 <li><code>timeout_ms</code> (optional) — Maximum time to wait (default 10000)</li>
 </ul>
 </article>
+</div>
 </section>
 
   
-<section id="architecture">
+<section id="architecture" class="docsec">
 <h2>Architecture</h2>
 <p class="section-lede">Three layers, one contract.</p>
 
+<div class="grid two">
 <article class="arch-layer">
   <h3>MCP Server (stdio)</h3>
   <p>Exposes 22 <code>browse_*</code> tools + 6 prompts over stdio. Any MCP client (Claude, Cursor, Copilot, your agent) gets hands on your browser.</p>
@@ -356,10 +365,11 @@
   <h3>Approval Gate (Sentinel)</h3>
   <p>Classifies every tool call. Destructive actions wait for a human. The gate reads the page <em>now</em>, not when the approval was queued. Expired approvals disappear.</p>
 </article>
+</div>
 </section>
 
 
-  <section id="proof">
+  <section id="proof" class="proof">
     <h2>Proof — real runs, not samples</h2>
     <p>The transcripts below were captured by running orvima, not written by hand.</p>
     <div class="runners">

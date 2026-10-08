@@ -6,6 +6,57 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **orvima.in was redesigned** (`docs/index.html`, `docs/style.css`,
+  `docs/main.js`): one headline arc — hero → difference → stack → gate →
+  comparison → measured facts → install — in a Stripe/Linear/Vercel-style
+  dark shell that keeps the existing accent (`#F5A524` on `#0D1117`), the
+  existing fonts, no emoji and no raster art. Prose is roughly half its old
+  length and every remaining claim is either category-level or a number the
+  test suite re-measures. The "Typical browser MCP" sample deliberately
+  carries no `verified` field: its absence is the claim. The hero glow is
+  pure CSS now — the earlier scaled-element version pushed the document
+  640px sideways at 1280px.
+- **`docs/docs.html` shares the index's stylesheet properly.** Its sections
+  carry a `.docsec` class (the old generic `section:not(...)` rule went with
+  the redesign), its tool/endpoint/config/prompt/architecture articles are
+  real `.grid two` cards, and its badges and GET/POST chips are styled
+  instead of being bare words.
+
+### Fixed
+- **Docstrings rendered as live widgets on the docs page.** They describe
+  markup *as text* — `browse_select` says `<select>`, `browse_set_files`
+  says ``` ``<input type=file>`` ```, a prompt argument mentions `<table>` —
+  and `docs/build_docs.py` injected them raw, so the page rendered a file
+  picker nobody opened, an empty dropdown eating its own sentence, and a
+  stray `<table>` element. Every data field now passes through `_markup()`:
+  escape first, then turn single- and double-backtick code marks into
+  `<code>` (the backticks used to print literally).
+- **`main.js` threw `Cannot set properties of null` on `docs.html`.** The
+  difference-section mini transcripts were painted unconditionally, but only
+  the index has those elements; both pages share one script. Guarded, with
+  a rendered check on the index so the guard cannot become a silent no-op
+  where the elements do exist.
+- **The stylesheet parser stopped at the first `@media`.** `walk()` did not
+  skip the whitespace before an at-rule, so every rule after the first
+  media block escaped the duplicate-selector and class-coverage checks —
+  the bug that hid a duplicate-rule pile-up. Fixed rather than worked
+  around, and the docs-page checks below now read the same parser.
+- **The page's test count had drifted.** The stats block said 692; a real
+  `pytest --collect-only` says 707. The number is now collected by the test
+  itself, alongside the already-guarded file count and source lines.
+
+### Added
+- **`docs/build_docs.py` grew a `render()`** that returns the page without
+  writing it, so the suite can diff the shipped `docs.html` against a fresh
+  generation — a generated page with nothing enforcing a rebuild had already
+  drifted from both its generator and its stylesheet.
+- **Eight site guard tests** (`tests/test_site_docs.py`, 30 → 38): docs.html
+  freshness, docs class-coverage against the CSS, exact tool-name coverage,
+  and rendered checks at 1280×900 for console errors, sideways scroll,
+  per-section padding (the collapse this whole pass would have missed),
+  transcript painting and anchor resolution.
+
 ## [0.1.5] - 2026-10-06
 
 Everything below was developed against a written plan with falsifiable gates.

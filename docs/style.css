@@ -1,7 +1,17 @@
 /* orvima — single stylesheet, no build step, no framework.
    The accent is the brand's #F5A524. GitHub reserves #3fb950 / #d29922 / #cf222e
    for pass / warn / fail states, so an accent drawn from those would read as a
-   status colour rather than a brand. */
+   status colour rather than a brand.
+
+   Two structural contracts with tests/test_site_docs.py, each of which has
+   already caused a real bug once:
+   - Every @media block sits at the end of this file, after all base rules.
+     The suite's parser walks the file in order and cannot skip text before an
+     at-rule, so an at-rule in the middle silently hides everything after it
+     from the duplicate-selector and class-coverage checks.
+   - One rule per exact selector per context. `.compare-table th` written
+     twice with different bodies is reported as a collision; put every
+     declaration for that selector in a single rule instead. */
 
 :root {
   --bg: #0b0d10;
@@ -101,9 +111,46 @@ code { font-family: var(--mono); font-size: 0.9em; }
 /* ---------- hero ---------- */
 
 .hero {
+  position: relative;
   max-width: var(--max);
   margin: 0 auto;
   padding: 96px 24px 64px;
+}
+
+/* The brand glow is painted, not shipped as an image: a background cannot
+   extend past its own box, so it cannot widen the page. (An earlier version
+   scaled a positioned pseudo-element by 1.8, which pushed the document 640px
+   sideways at 1280px wide -- caught by the overflow test.) */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(62% 58% at 56% 32%, rgba(245, 165, 36, 0.055), transparent 74%),
+    radial-gradient(34% 30% at 64% 24%, rgba(245, 165, 36, 0.045), transparent 78%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.hero-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.hero-copy {
+  max-width: 600px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.hero-copy > * { max-width: 100%; }
+
+.hero-proof {
+  position: sticky;
+  top: 100px;
+  overflow: hidden;
 }
 
 .eyebrow {
@@ -183,12 +230,18 @@ h1 {
 
 .tab:hover { color: var(--fg); }
 
+.tab:last-child { border-right: 0; }
+
 .tab.active { color: var(--accent); background: var(--bg-raised); box-shadow: inset 0 -2px 0 var(--accent); }
 
 .installbox pre {
   margin: 0;
   padding: 18px;
   overflow-x: auto;
+  /* The install command is longer than the hero column. Clipping it to one
+     scrolled line hides part of what the visitor came to copy, so it wraps. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .installbox code { color: var(--fg); font-size: 0.85rem; }
@@ -205,11 +258,24 @@ h1 {
 
 /* ---------- sections ---------- */
 
-section:not(.hero):not(.proof) {
+/* Explicitly listed so every section class on the page has its own rule;
+   `section:not(...)` styles them just as well but leaves the coverage check
+   with nothing to find. `.docsec` is docs.html's shared section class — the
+   generated page's sections carry nothing else. */
+.difference,
+.stack,
+.proof,
+.gate-section,
+.compare-section,
+.tools,
+.facts,
+.install-section,
+.docsec {
   max-width: var(--max);
   margin: 0 auto;
   padding: 60px 24px;
   border-top: 1px solid var(--line);
+  scroll-margin-top: 78px;
 }
 
 h2 {
@@ -237,14 +303,156 @@ h2 code { color: var(--accent); }
 
 .footnote.honest { color: var(--accent-dim); }
 
-/* ---------- proof: real transcripts ---------- */
+/* ---------- difference: ok vs verified ---------- */
 
-.proof {
-  max-width: var(--max);
-  margin: 0 auto;
-  padding: 60px 24px;
-  border-top: 1px solid var(--line);
+.diff-head {
+  text-align: center;
+  max-width: 72ch;
+  margin: 0 auto 48px;
 }
+
+.diff-head h2 { margin-bottom: 12px; }
+
+.diff-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.diff-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  padding: 24px;
+}
+
+.diff-card.other { border-color: var(--line); }
+
+.diff-card.orvima {
+  border-color: var(--accent-dim);
+  background: rgba(245, 165, 36, 0.04);
+}
+
+.diff-card h3 {
+  margin: 0 0 16px;
+  font-size: 0.98rem;
+  color: var(--fg);
+}
+
+.diff-card.orvima h3 { color: var(--accent); }
+
+.term.mini {
+  font-size: 0.7rem;
+  line-height: 1.7;
+  padding: 12px;
+  min-height: 120px;
+  background: #0a0c0f;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.diff-foot {
+  margin: 16px 0 0;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+  max-width: 50ch;
+}
+
+.diff-foot code { color: var(--fg); }
+
+/* ---------- stack: the flow of one request ---------- */
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  /* Stretch, not center: the nodes have different amounts of copy, and
+     centered boxes give the row a ragged bottom edge. The arrows re-center
+     on themselves. */
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.flow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  min-width: 140px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.flow-node.accent {
+  border-color: var(--accent-dim);
+  background: rgba(245, 165, 36, 0.04);
+}
+
+/* Icon plaque: an inline SVG inside a small rounded box, so the flow reads
+   with the same visual weight across nodes. No emoji, no icon font. */
+.flow-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--fg-dim);
+}
+
+.flow-icon svg { display: block; width: 20px; height: 20px; }
+
+.flow-node.accent .flow-icon {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: rgba(245, 165, 36, 0.07);
+}
+
+.flow-node h3 {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  color: var(--fg);
+}
+
+.flow-node.accent h3 { color: var(--accent); }
+
+.flow-node p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+  max-width: 16ch;
+}
+
+.flow-node code { color: var(--fg); font-size: 0.75rem; }
+
+.flow-node strong { color: var(--accent); }
+
+.flow-arrow {
+  align-self: center;
+  color: var(--fg-faint);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.flow-note {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+}
+
+.flow-note a { color: var(--accent); }
+
+/* ---------- proof: real transcripts ---------- */
 
 .proofhead h2 { margin-bottom: 10px; }
 
@@ -303,10 +511,13 @@ h2 code { color: var(--accent); }
 .runner.highlight .stepcount { color: var(--accent); }
 
 /* The transcript itself. Built by main.js from transcript.json, which is
-   captured by build_transcripts.py running orvima for real. */
-/* The transcript must never widen the page. `pre` on a long result line pushes
+   captured by build_transcripts.py running orvima for real.
+   The transcript must never widen the page. `pre` on a long result line pushes
    the whole document sideways, so the scroll is contained here and the widest
-   line is allowed to clip rather than reflow. */
+   line is allowed to clip rather than reflow. Wrapping rather than scrolling:
+   `width: max-content` kept a scroll container that still widened the
+   document, and a marketing page should not need horizontal scrolling to read
+   its own evidence. */
 .term {
   font-family: var(--mono);
   font-size: 0.78rem;
@@ -318,9 +529,6 @@ h2 code { color: var(--accent); }
   max-width: 100%;
 }
 
-/* Wrapping rather than scrolling. `width: max-content` kept a scroll container
-   that still widened the document, and a marketing page should not need
-   horizontal scrolling to read its own evidence. */
 .term .line {
   display: block;
   white-space: pre-wrap;
@@ -328,12 +536,10 @@ h2 code { color: var(--accent); }
 }
 
 .term .tool { color: var(--accent); }
-.term .arrow { color: var(--fg-faint); }
 .term .ok { color: var(--good); }
 .term .unverified { color: var(--accent); font-weight: 600; }
 .term .fail { color: #f0645c; }
 .term .meta { color: var(--fg-faint); }
-
 .term .stepno { color: var(--fg-faint); }
 
 .runnerfoot {
@@ -348,7 +554,7 @@ h2 code { color: var(--accent); }
 
 .runner.highlight .runnerfoot code { color: var(--accent); }
 
-/* ---------- contrast ---------- */
+/* ---------- contrast: the differentiator as a comparison ---------- */
 
 .contrast {
   display: grid;
@@ -363,7 +569,10 @@ h2 code { color: var(--accent); }
   padding: 22px;
 }
 
-.contrast .col.accent { border-color: var(--accent-dim); background: rgba(245, 165, 36, 0.045); }
+.contrast .col.accent {
+  border-color: var(--accent-dim);
+  background: rgba(245, 165, 36, 0.045);
+}
 
 .contrast h3 {
   margin: 0 0 12px;
@@ -420,6 +629,35 @@ h2 code { color: var(--accent); }
 
 .steps p { margin: 0; color: var(--fg-dim); font-size: 0.9rem; max-width: 66ch; }
 
+/* ---------- gate capture ---------- */
+
+.gate-capture {
+  margin-top: 32px;
+  text-align: center;
+}
+
+.gate-capture h3 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  color: var(--fg);
+}
+
+.gate-capture img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+
+.capture-caption {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+}
+
+.capture-caption code { color: var(--accent); }
+
 /* ---------- callout ---------- */
 
 .callout {
@@ -434,6 +672,69 @@ h2 code { color: var(--accent); }
 .callout p { margin: 0; color: var(--fg-dim); font-size: 0.9rem; max-width: 72ch; }
 
 .callout code { color: var(--accent); }
+
+/* ---------- compare table ---------- */
+
+.compare-table-wrapper {
+  overflow-x: auto;
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+/* th and td each carry their own copies of the shared declarations: one rule
+   per exact selector is the collision contract, so a grouped
+   `th, td` rule followed by a `th` rule would be reported as two rules for
+   `.compare-table th`. */
+.compare-table th {
+  padding: 14px 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  background: var(--bg-raised);
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.compare-table td {
+  padding: 14px 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--fg-dim);
+}
+
+.compare-table th[scope="col"]:first-child { width: 180px; }
+
+/* 40% each, not 50%: 180 + 50% + 50% over-constrains the row and invites the
+   table to grow past its wrapper. 40/40/180 fits inside 100% and keeps the
+   two comparison columns even. */
+.compare-table th[scope="col"]:nth-child(2),
+.compare-table th[scope="col"]:nth-child(3) { width: 40%; }
+
+.compare-table tr:last-child td { border-bottom: none; }
+
+.compare-table td:first-child {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.compare-table code {
+  color: var(--fg);
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.compare-table strong { color: var(--accent); }
 
 /* ---------- tools ---------- */
 
@@ -481,6 +782,7 @@ h2 code { color: var(--accent); }
 /* ---------- generic grid ---------- */
 
 .grid { display: grid; gap: 16px; }
+
 .grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 
 .grid article {
@@ -505,6 +807,99 @@ h2 code { color: var(--accent); }
 
 .grid pre code { font-size: 0.82rem; }
 
+/* ---------- docs page (docs.html) ----------
+   The generated page arranges its articles in the `.grid two` cards above;
+   these are the pieces it uses that the index never does. */
+
+/* Docstrings are prose, and the index's 280px auto-fit packs them three
+   across at desktop, where a line of RST drops to 40 characters. `min()`
+   keeps narrow viewports on one column instead of overflowing a 420px
+   minimum. */
+.docsec .grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+}
+
+.badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--fg-dim);
+  background: var(--bg);
+  vertical-align: middle;
+}
+
+/* A reading of the annotation, not decoration: read-only is safe, destructive
+   is the one to look at. All four pairs against --bg clear 4.5:1. */
+.badge.read-only { color: var(--good); border-color: rgba(78, 201, 160, 0.35); }
+.badge.destructive { color: #f0645c; border-color: rgba(240, 100, 92, 0.4); }
+.badge.idempotent { color: var(--fg-faint); border-color: var(--line); }
+.badge.open-world { color: var(--accent); border-color: var(--accent-dim); }
+
+.ep-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+.method {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.method.get {
+  color: var(--good);
+  background: rgba(78, 201, 160, 0.08);
+  border-color: rgba(78, 201, 160, 0.3);
+}
+
+.method.post {
+  color: var(--accent);
+  background: rgba(245, 165, 36, 0.08);
+  border-color: var(--accent-dim);
+}
+
+.endpoint p.params {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+}
+
+.tool .why {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+}
+
+.tool .why strong { color: var(--fg); }
+
+/* The config file paths are long and must break rather than push the card. */
+.client-config code { overflow-wrap: anywhere; }
+
+.arch-layer em { color: var(--accent); font-style: normal; }
+
+.prompt ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--fg-dim);
+  font-size: 0.88rem;
+}
+
+.prompt li { margin: 5px 0; }
+
 /* ---------- footer ---------- */
 
 footer {
@@ -521,18 +916,55 @@ footer a { color: var(--accent); }
 
 footer .small { font-size: 0.84rem; color: var(--fg-faint); }
 
-/* ---------- responsive ---------- */
+/* ---------- scroll reveal ---------- */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- responsive: every @media block last, by contract (see header) ---------- */
+
+@media (min-width: 720px) {
+  .diff-pair { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 960px) {
+  .hero-inner {
+    grid-template-columns: 1.2fr 1fr;
+    gap: 48px;
+  }
+}
 
 @media (max-width: 620px) {
   .hero { padding-top: 58px; }
+  .hero-copy { max-width: 100%; }
+  .hero-proof { position: static; }
   .site nav { padding: 10px 16px; }
   .navlinks { gap: 0 16px; }
   .term { font-size: 0.72rem; }
   .steps li { padding: 14px 16px 14px 50px; }
   .steps li::before { left: 11px; top: 13px; }
+  .diff-card { padding: 18px; }
+  .flow-node { min-width: 100%; max-width: 100%; }
+  .flow-arrow { display: none; }
+  .compare-table th[scope="col"]:first-child { width: auto; }
+  .compare-table th, .compare-table td { padding: 10px 12px; font-size: 0.82rem; }
+  .gate-capture img { border-radius: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   * { animation: none !important; transition: none !important; }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

@@ -24,6 +24,7 @@
     <div class="navlinks">
       <a href="#proof">Proof</a>
       <a href="#gate">The gate</a>
+      <a href="#compare">Compare</a>
       <a href="#tools">Tools</a>
       <a href="docs.html">Full docs</a>
       <a href="#install">Install</a>
@@ -36,35 +37,121 @@
 
   <!-- ------------------------------------------------------------------ -->
   <section class="hero">
-    <p class="eyebrow">MIT &middot; self-hosted &middot; nothing leaves your machine</p>
-    <h1>A browser agent that<br>admits when it isn't sure.</h1>
-    <p class="lede">
-      Every AI browser on this page's competitors will tell you the click worked.
-      orvima tells you whether the DOM actually changed &mdash; and when it
-      couldn't tell, it says so instead of guessing.
-    </p>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow">MIT &middot; self-hosted &middot; nothing leaves your machine</p>
+        <h1>A browser agent that admits when it isn't sure.</h1>
+        <p class="lede">
+          Most browser MCPs tell you the click worked. orvima tells you whether the DOM actually changed &mdash; and when it couldn't tell, it says so instead of guessing.
+        </p>
 
-    <div class="cta">
-      <a class="btn primary" href="#install">Install</a>
-      <a class="btn" href="#proof">See a real run</a>
-    </div>
+        <div class="cta">
+          <a class="btn primary" href="#install">Install</a>
+          <a class="btn" href="#proof">See a real run</a>
+        </div>
 
-    <!-- The claim, and the evidence for it, side by side. -->
-    <div class="installbox">
-      <div class="tabs" role="tablist" aria-label="Install command">
-        <button class="tab active" data-os="win" role="tab" aria-selected="true">Windows</button>
-        <button class="tab" data-os="unix" role="tab" aria-selected="false">macOS / Linux</button>
-        <button class="tab" data-os="src" role="tab" aria-selected="false">From source</button>
+        <div class="installbox">
+          <div class="tabs" role="tablist" aria-label="Install command">
+            <button class="tab active" data-os="win" role="tab" aria-selected="true">Windows</button>
+            <button class="tab" data-os="unix" role="tab" aria-selected="false">macOS / Linux</button>
+            <button class="tab" data-os="src" role="tab" aria-selected="false">From source</button>
+          </div>
+          <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
+          <p class="installnote" id="installnote">
+            Installs the v0.1.5 release &mdash; 22 <code>browse_*</code> tools.
+          </p>
+        </div>
       </div>
-      <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
-      <p class="installnote" id="installnote">
-        Installs the current <a href="https://github.com/Sachitt-AV-08/orvima/releases/latest">release</a> &mdash; <b>22</b> <code>browse_*</code> tools.
-      </p>
+
+      <div class="hero-proof">
+        <div class="runner highlight">
+          <div class="runnerhead">
+            <span class="goal">delete everything in my account</span>
+            <span class="stepcount">held</span>
+          </div>
+          <div class="term" id="term-gate" role="region" aria-label="A delete click refused by the approval gate" aria-live="off"></div>
+          <p class="runnerfoot">
+            The gate read the selector, judged it <code>outward</code>, and stopped. The click never ran.
+          </p>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- ------------------------------------------------------------------ -->
-  <section id="proof" class="proof">
+  <section id="difference" class="difference reveal">
+    <div class="diff-head">
+      <h2>The difference, shown not stated</h2>
+      <p class="section-lede">
+        Another agent returns <code>ok</code> when the click is dispatched. orvima re-reads the DOM and reports <code>verified</code> &mdash; and <code>verified: false</code> when it couldn't confirm.
+      </p>
+    </div>
+
+    <div class="diff-pair">
+      <div class="diff-card other">
+        <h3>Typical browser MCP</h3>
+        <div class="term mini" id="term-other"></div>
+        <p class="diff-foot">Reports <code>ok: true</code> the moment the click is dispatched. Never re-reads the DOM.</p>
+      </div>
+
+      <div class="diff-card orvima">
+        <h3>orvima</h3>
+        <div class="term mini" id="term-orvima"></div>
+        <p class="diff-foot">Re-reads the DOM afterwards. Returns <code>verified: false</code> when it could not confirm.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section id="stack" class="stack reveal">
+    <h2>The stack</h2>
+    <p class="section-lede">
+      Three parts, each honest and testable, that together carry a goal from your agent to a verified change on the page.
+    </p>
+
+    <div class="flow">
+      <div class="flow-node">
+        <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6 L13.7 8.6 L18.7 10.3 L13.7 12 L12 17 L10.3 12 L5.3 10.3 L10.3 8.6 Z"/></svg></div>
+        <h3>AI</h3>
+        <p>Claude, Cursor, Copilot, your own agent</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+
+      <div class="flow-node">
+        <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 7.5 L5 12 L9.5 16.5"/><path d="M14.5 7.5 L19 12 L14.5 16.5"/></svg></div>
+        <h3>MCP</h3>
+        <p>22 <code>browse_*</code> tools over one contract</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+
+      <div class="flow-node accent">
+        <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.3 L18.4 5.8 L18.4 11.4 C18.4 15.4 15.8 18.4 12 19.7 C8.2 18.4 5.6 15.4 5.6 11.4 L5.6 5.8 Z"/><path d="M9 11.7 H15"/></svg></div>
+        <h3>Gate</h3>
+        <p>sentinel classifier: run / ask / refuse</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+
+      <div class="flow-node">
+        <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.2" y="5.4" width="15.6" height="13.2" rx="2.2"/><path d="M4.2 9.4 H19.8"/><path d="M7.2 7.4 h.01"/><path d="M9.6 7.4 h.01"/></svg></div>
+        <h3>Browser</h3>
+        <p>Attaches to <strong>your</strong> browser at <code>127.0.0.1</code></p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+
+      <div class="flow-node">
+        <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 7.2 H19.5"/><path d="M9.5 12 H19.5"/><path d="M9.5 16.8 H19.5"/><path d="M5.6 7.2 h.01"/><path d="M5.6 12 h.01"/><path d="M5.6 16.8 h.01"/></svg></div>
+        <h3>Recipes</h3>
+        <p>errands router: goals match reviewed recipes or are refused</p>
+      </div>
+    </div>
+
+    <p class="flow-note">
+      orvima (browser + gate) + <a href="https://github.com/Sachitt-AV-08/sentinel" target="_blank" rel="noopener">sentinel</a> (local action classifier) + <a href="https://github.com/Sachitt-AV-08/errands" target="_blank" rel="noopener">errands</a> (recipe router). Monorepo roadmap.
+    </p>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section id="proof" class="proof reveal">
     <div class="proofhead">
       <h2>This is a real run.</h2>
       <p>
@@ -84,18 +171,6 @@
         </div>
         <div class="term" id="term-happy" role="region" aria-label="Transcript of a successful run" aria-live="off"></div>
         <p class="runnerfoot">Every step returns <code>verified: true</code>.</p>
-      </div>
-
-      <div class="runner highlight">
-        <div class="runnerhead">
-          <span class="goal">delete everything in my account</span>
-          <span class="stepcount">held</span>
-        </div>
-        <div class="term" id="term-gate" role="region" aria-label="A delete click refused by the approval gate" aria-live="off"></div>
-        <p class="runnerfoot">
-          The gate read the selector, judged it <code>outward</code>, and stopped.
-          The click never ran.
-        </p>
       </div>
     </div>
 
@@ -123,7 +198,7 @@
   </section>
 
   <!-- ------------------------------------------------------------------ -->
-  <section id="gate">
+  <section id="gate" class="gate-section reveal">
     <h2>The gate is the point.</h2>
     <p class="section-lede">
       Any MCP-capable AI can be told to click. The difference is what happens when
@@ -155,6 +230,12 @@
       </li>
     </ol>
 
+    <div class="gate-capture">
+      <h3>Real capture</h3>
+      <img src="viral/refusal.gif" alt="Gate refusing a delete click" loading="lazy">
+      <p class="capture-caption">The gate sees the selector, judges it <code>outward</code>, queues for human, and the click never runs.</p>
+    </div>
+
     <div class="callout">
       <strong>Fails closed, including on a broken install.</strong>
       <p>
@@ -166,7 +247,54 @@
   </section>
 
   <!-- ------------------------------------------------------------------ -->
-  <section id="tools">
+  <section id="compare" class="compare-section reveal">
+    <h2>How orvima compares</h2>
+    <p class="section-lede">
+      Every row below is a claim orvima proves with its own test suite.
+    </p>
+
+    <div class="compare-table-wrapper">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">Typical browser MCP</th>
+            <th scope="col">orvima</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Verification</th>
+            <td>Reports <code>ok</code> on dispatch</td>
+            <td>Re-reads DOM, reports <code>verified</code>; <code>verified: false</code> when unsure</td>
+          </tr>
+          <tr>
+            <th scope="row">Approval gate</th>
+            <td>None or coarse "destructive?"</td>
+            <td>Local classifier: run / ask / refuse; re-checks page at decision time; expires approvals</td>
+          </tr>
+          <tr>
+            <th scope="row">Privacy & locality</th>
+            <td>Often cloud or fresh browser</td>
+            <td>Runs on <code>127.0.0.1</code>; attaches to <strong>your</strong> running browser; cookies never leave</td>
+          </tr>
+          <tr>
+            <th scope="row">MCP-native</th>
+            <td>Varies</td>
+            <td>22 <code>browse_*</code> tools over one dict-in/dict-out contract; works with any MCP client</td>
+          </tr>
+          <tr>
+            <th scope="row">Goal routing</th>
+            <td>Generative planning (may hallucinate)</td>
+            <td>errands: goal matches a reviewed recipe or is refused; no generative planning</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section id="tools" class="tools reveal">
     <h2>22 tools, on <code>127.0.0.1</code></h2>
     <p class="section-lede">
       Every tool is plain dict-in, dict-out over one contract, so the MCP server,
@@ -194,17 +322,15 @@
       <span>browse_close_tab</span>
       <span>browse_go_back</span><span>browse_eval_audit</span><span>browse_set_files</span><span>browse_download</span></div>
     <p class="footnote">
-      Three more &mdash; <code>browse_eval_audit</code>, <code>browse_set_files</code>,
-      <code>browse_download</code> &mdash; are on <code>main</code> and ship in the
-      next release. The count above is the v0.1.4 release your install command pulls.
+      The count above is the v0.1.5 release your install command pulls.
     </p>
   </section>
 
   <!-- ------------------------------------------------------------------ -->
-  <section id="facts">
+  <section id="facts" class="facts reveal">
     <h2>Measured, not claimed</h2>
     <div class="stats">
-      <div class="stat"><b>692</b><span>tests, 42 files</span></div>
+      <div class="stat"><b>707</b><span>tests, 42 files</span></div>
       <div class="stat"><b>8.5k</b><span>lines of source</span></div>
       <div class="stat"><b>11/11</b><span>bench pass rate</span></div>
       <div class="stat"><b>5/5</b><span>irreversible actions, done exactly once</span></div>
@@ -222,7 +348,7 @@
   </section>
 
   <!-- ------------------------------------------------------------------ -->
-  <section id="install">
+  <section id="install" class="install-section reveal">
     <h2>Get started</h2>
     <div class="grid two">
       <article>
@@ -234,7 +360,7 @@
         <h3>Point your AI at it</h3>
         <p>MCP config for Claude Desktop, Cursor or Copilot is in the README.</p>
         <pre><code>git clone https://github.com/Sachitt-AV-08/orvima
-cd orvima &amp;&amp; uv sync</code></pre>
+cd orvima && uv sync</code></pre>
       </article>
     </div>
     <div class="callout">
@@ -265,7 +391,3 @@ cd orvima &amp;&amp; uv sync</code></pre>
 <script src="main.js"></script>
 </body>
 </html>
-
-
-
-

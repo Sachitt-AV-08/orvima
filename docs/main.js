@@ -12,11 +12,11 @@
 const CMDS = {
   win: {
     cmd: "irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex",
-    note: 'Installs the v0.1.4 release &mdash; 19 tools. <code>main</code> is ahead at 22.',
+    note: 'Installs the v0.1.5 release &mdash; 22 tools.',
   },
   unix: {
     cmd: "curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh",
-    note: 'Installs the v0.1.4 release &mdash; 19 tools. <code>main</code> is ahead at 22.',
+    note: 'Installs the v0.1.5 release &mdash; 22 tools.',
   },
   src: {
     cmd: "git clone https://github.com/Sachitt-AV-08/orvima\ncd orvima && uv sync",
@@ -167,3 +167,58 @@ async function load() {
 }
 
 load();
+
+/* ---------------- difference mini terminals ---------------- */
+
+/* The "typical" side returns plain ok: True and nothing else -- no verified
+   field, because it never re-reads the DOM. That absence is the whole point
+   of the pair, so this sample must not grow a verified key. */
+const otherLines = [
+  "step 1: browse_navigate({'url': 'https://shop.example.com/checkout'})",
+  "  -> ok=True {'ok': True, 'url': 'https://shop.example.com/checkout'}",
+  "step 2: browse_click({'selector': 'button:has-text(\"Place order\")'})",
+  "  -> ok=True {'ok': True}",
+];
+
+const orvimaLines = [
+  "step 1: browse_navigate({'url': 'https://shop.example.com/checkout'})",
+  "  -> ok=True {'ok': True, 'url': 'https://shop.example.com/checkout', 'verified': True}",
+  "step 2: browse_click({'selector': 'button:has-text(\"Place order\")'})",
+  "  -> ok=True {'ok': True, 'verified': False, 'note': 'Button disabled; click dispatched but no navigation'}",
+  "step 3: browse_snapshot({})",
+  "  -> ok=True {'ok': True, 'dom': '<button disabled>Place order</button>', 'verified': False}",
+  "step 4: browse_eval({'script': 'document.querySelector(\"button\").disabled'})",
+  "  -> ok=True {'ok': True, 'result': true, 'verified': True, 'note': 'Confirmed button is still disabled'}",
+];
+
+function paintMini(node, lines) {
+  node.textContent = "";
+  for (const raw of lines) {
+    if (!raw.trim()) continue;
+    node.appendChild(renderLine(raw));
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  /* Only the index has the difference pair; docs.html shares this script and
+     must not throw for elements it never had. */
+  const other = document.getElementById("term-other");
+  const orvima = document.getElementById("term-orvima");
+  if (other) paintMini(other, otherLines);
+  if (orvima) paintMini(orvima, orvimaLines);
+});
+
+/* ---------------- scroll reveal ---------------- */
+
+const revealObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      revealObserver.unobserve(entry.target);
+    }
+  }
+}, { threshold: 0.12, rootMargin: "0px 0px -60px 0px" });
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".reveal").forEach((el) => revealObserver.observe(el));
+});
