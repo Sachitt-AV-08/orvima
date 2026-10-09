@@ -254,7 +254,7 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
 - [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (782 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
+- [x] CI + test suite (782 tests with a 75% line-coverage gate; demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
 - [x] Dashboard UI at `http://127.0.0.1:8301` — live viewport, pause/resume/cancel, approvals queue, owner analytics page (passphrase-gated)
 - [ ] Media playback (file downloads are done: `browse_download`)

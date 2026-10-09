@@ -26,8 +26,8 @@ jobs:
         run: uv pip install "sentinel @ git+https://github.com/Sachitt-AV-08/sentinel.git@ad90f5d95d872203153672610009e4609cb28d04"
       - name: Lint
         run: uv run --no-sync ruff check src tests
-      - name: Test (offline — no browser needed)
-        run: uv run --no-sync pytest
+      - name: Test (full suite, real Chromium, no external network — the demo/simulated runs and the served dashboard + docs pages are all localhost)
+        run: uv run --no-sync pytest --cov=orvima
       - name: CLI smoke (demo)
         run: |
           uv run --no-sync orvima --version

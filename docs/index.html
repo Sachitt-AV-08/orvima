@@ -58,7 +58,7 @@
           </div>
           <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
           <p class="installnote" id="installnote">
-            Installs the v0.1.5 release &mdash; 22 <code>browse_*</code> tools.
+            Installs the v0.1.6 release &mdash; 22 <code>browse_*</code> tools.
           </p>
         </div>
       </div>
@@ -322,7 +322,7 @@
       <span>browse_close_tab</span>
       <span>browse_go_back</span><span>browse_eval_audit</span><span>browse_set_files</span><span>browse_download</span></div>
     <p class="footnote">
-      The count above is the v0.1.5 release your install command pulls.
+      The count above is the v0.1.6 release your install command pulls.
     </p>
   </section>
 
@@ -337,7 +337,8 @@
     </div>
     <p class="footnote">
       Reproduce them yourself:
-      <code>python -m pytest</code>, <code>python -m ruff check src tests</code>,
+      <code>python -m pytest --cov=orvima</code> (75% gate),
+      <code>python -m ruff check src tests</code>,
       <code>python -m orvima.bench</code>.
     </p>
     <p class="footnote honest">

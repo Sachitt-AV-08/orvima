@@ -4,6 +4,21 @@ All notable changes to Orvima are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- A coverage gate in CI: the suite now runs with `pytest --cov=orvima` and
+  fails the build below 75% line coverage (`fail_under` in `pyproject.toml`,
+  measured 77% when set), enforced on every OS/Python in the matrix — the
+  "measured, not claimed" standard, applied to the code itself.
+
+### Changed
+- The docs site's install note now names the v0.1.6 release (the install
+  scripts pull the latest GitHub release), and `test_site_docs.py`'s
+  `RELEASE_TAG` guard reads the real `v0.1.6` tag instead of `v0.1.5`.
+- The CI test step's label now says what it actually does (full suite, real
+  Chromium, localhost-only) instead of "offline — no browser needed".
+
 ## [0.1.6] - 2026-10-09
 
 ### Added

@@ -41,7 +41,7 @@ jobs:
         run: uv run --no-sync ruff check src tests
 
       - name: Test
-        run: uv run --no-sync pytest
+        run: uv run --no-sync pytest --cov=orvima
 
   build-and-release:
     needs: test-and-lint

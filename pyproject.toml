@@ -55,6 +55,17 @@ packages = ["src/orvima"]
 addopts = "-q"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+source = ["orvima"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# The floor is a gate, not a badge: CI runs `pytest --cov=orvima` and fails the
+# build below this. Measured 77% (win32, py3.11) when set; the 2pt buffer keeps
+# the matrix (4 OS/Python combos) from tripping on platform-specific branches.
+fail_under = 75
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
