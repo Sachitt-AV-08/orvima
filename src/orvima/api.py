@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import threading
+import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
@@ -20,6 +21,11 @@ from .tools import TOOL_NAMES, call_tool
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8301
+
+#: When the process started, so the owner page's uptime is measured from the
+#: install that is actually running rather than from when the module was first
+#: imported by a test.
+_STARTED = time.time()
 
 store = SessionStore()
 
@@ -464,6 +470,51 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
 
         return phone_page()
 
+    # -------------------------------------------------------- dashboard ----
+    @app.get("/", include_in_schema=False)
+    def dashboard():
+        """The control dashboard: watch sessions live, pause, cancel, approve.
+
+        Served at the root so `orvima serve` really does give you a local UI at
+        `http://127.0.0.1:8301` and not just an API. Like the phone page it adds
+        no authority over the endpoints it calls; unlike the phone page it can
+        drive the agent loop (pause/resume/cancel are token-guarded).
+        """
+        from .dashboard import dashboard_page  # noqa: PLC0415 - keeps the page optional to import
+
+        return dashboard_page()
+
+    # ------------------------------------------------------------ owner ----
+    @app.get("/owner", include_in_schema=False)
+    def owner():
+        """The operator's analytics page, gated by a passphrase.
+
+        Served from orvima so unlocking the owner's numbers does not depend on a
+        third-party script. The analytics themselves are behind
+        `/api/owner/analytics`, which requires the passphrase in a header.
+        """
+        from .owner import owner_page  # noqa: PLC0415 - keeps the page optional to import
+
+        return owner_page()
+
+    @app.get("/api/owner/analytics", include_in_schema=False)
+    def owner_analytics(request: Request) -> dict:
+        """Measured facts about this install, for the operator alone.
+
+        Passphrase-gated: presented in the `X-Orvima-Owner` header (a URL would
+        land in logs and history), compared constant-time against the stored
+        verifier or the `ORVIMA_OWNER_PASSPHRASE` override.
+        """
+        from .owner import OWNER_HEADER, collect_analytics, verify_passphrase  # noqa: PLC0415
+
+        offered = request.headers.get(OWNER_HEADER)
+        if not verify_passphrase(offered):
+            raise HTTPException(status_code=403, detail="wrong or missing owner passphrase")
+        return {
+            "ok": True,
+            **collect_analytics(store, get_gate(), _STARTED, __version__),
+        }
+
     # ------------------------------------------------------- approvals ----
     @app.get("/api/approvals")
     def list_approvals(
@@ -491,9 +542,6 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
         if gate:
             body.update(_gate_health(active))
         return body
-        if active is None:
-            return {"ok": True, "approvals": [], "gate": "disabled"}
-        return {"ok": True, "approvals": [r.public() for r in active.pending(session_id)]}
 
     @app.post("/api/approvals/{request_id}", dependencies=[Depends(_require_token)])
     def answer_approval(request_id: str, body: Approval) -> dict:

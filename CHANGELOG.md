@@ -4,7 +4,39 @@ All notable changes to Orvima are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.6] - 2026-10-09
+
+### Added
+- **A control dashboard at `http://127.0.0.1:8301/`** (`src/orvima/dashboard.py`,
+  served by `GET /`): create and list sessions, watch the live viewport and
+  transcript stream over SSE, pause/resume/cancel a run, and act on the
+  approvals queue. One self-served HTML file — no framework, no CDN, no third
+  party — with every item of server text rendered via `textContent`, tap targets
+  at ≥44px, and all acting controls built *only* when an `ORVIMA_API_TOKEN` is
+  configured (absent, not disabled). The token travels in `X-Orvima-Token`, never
+  in a URL.
+- **A passphrase-gated owner analytics page** (`src/orvima/owner.py`, served at
+  `GET /owner` with data at `GET /api/owner/analytics`): measured, live-collected
+  numbers — sessions by mode and status, steps, transcript rows, uptime, gate
+  state — with the passphrase sent in `X-Orvima-Owner` and checked against a
+  salted PBKDF2-HMAC-SHA256 verifier (200k iterations, constant-time compare).
+  The verifier is embedded, never the passphrase; `ORVIMA_OWNER_PASSPHRASE`
+  overrides it.
+- **Rendered-DOM test suites for both pages** (`tests/test_owner_dom.py`,
+  `tests/test_dashboard_dom.py`): hostile analytics payloads and hostile
+  transcript rows are asserted inert in a real browser (no executed script, no
+  parsed `<img>`), the passphrase is asserted absent from every URL and present
+  only in the header, controls are asserted absent without a token, and nothing
+  is fetched from any third party.
+- **`docs/build_docs.py` grew a `render()`** that returns the page without
+  writing it, so the suite can diff the shipped `docs.html` against a fresh
+  generation — a generated page with nothing enforcing a rebuild had already
+  drifted from both its generator and its stylesheet.
+- **Eight site guard tests** (`tests/test_site_docs.py`, 30 → 38): docs.html
+  freshness, docs class-coverage against the CSS, exact tool-name coverage,
+  and rendered checks at 1280×900 for console errors, sideways scroll,
+  per-section padding (the collapse this whole pass would have missed),
+  transcript painting and anchor resolution.
 
 ### Changed
 - **orvima.in was redesigned** (`docs/index.html`, `docs/style.css`,
@@ -22,6 +54,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the redesign), its tool/endpoint/config/prompt/architecture articles are
   real `.grid two` cards, and its badges and GET/POST chips are styled
   instead of being bare words.
+- **README quick start is real-first.** The real-browser path (`orvima serve`
+  → dashboard at `http://127.0.0.1:8301`, `orvima run`) leads; the offline
+  demo (`--mode demo`) is a footnote at the end. The Dashboard UI roadmap
+  item is checked off, and the test-count line states 782.
 
 ### Fixed
 - **Docstrings rendered as live widgets on the docs page.** They describe
@@ -42,20 +78,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   media block escaped the duplicate-selector and class-coverage checks —
   the bug that hid a duplicate-rule pile-up. Fixed rather than worked
   around, and the docs-page checks below now read the same parser.
-- **The page's test count had drifted.** The stats block said 692; a real
-  `pytest --collect-only` says 707. The number is now collected by the test
+- **The page's test count had drifted.** The stats block said 707; a real
+  `pytest --collect-only` says 782. The number is now collected by the test
   itself, alongside the already-guarded file count and source lines.
 
-### Added
-- **`docs/build_docs.py` grew a `render()`** that returns the page without
-  writing it, so the suite can diff the shipped `docs.html` against a fresh
-  generation — a generated page with nothing enforcing a rebuild had already
-  drifted from both its generator and its stylesheet.
-- **Eight site guard tests** (`tests/test_site_docs.py`, 30 → 38): docs.html
-  freshness, docs class-coverage against the CSS, exact tool-name coverage,
-  and rendered checks at 1280×900 for console errors, sideways scroll,
-  per-section padding (the collapse this whole pass would have missed),
-  transcript painting and anchor resolution.
+### Removed
+- **Dead code in `api.list_approvals`** — an unreachable block after the
+  `return body` that could never run.
 
 ## [0.1.5] - 2026-10-06
 

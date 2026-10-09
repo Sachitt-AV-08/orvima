@@ -44,26 +44,16 @@ irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | ie
 
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh
-
-orvima serve                       # local UI + API at http://127.0.0.1:8301
-orvima demo                        # offline tour on a simulated site, zero setup
 ```
 
-**No browser, no internet, no keys — try the offline tour:**
+**Against a real browser — your own Chrome, Edge or Brave. The default, so there is no flag to get wrong:**
 
 ```bash
-orvima run "send a message to Acme support" --mode demo
-```
-
-That goal gets planned, executed step by step against Orvima's built-in simulator, and every step is confirmed before the next one starts. Add `--mode demo` anywhere to stay there.
-
-**Against a real browser, no flag needed:**
-
-```bash
+orvima serve                       # local dashboard + API at http://127.0.0.1:8301
 orvima run "summarize the top story on hacker news"
 ```
 
-orvima drives a browser you own and can watch. Autonomous runs in real mode need an LLM — set `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` (any OpenAI-compatible endpoint, including local Ollama) — or just drive it through MCP and let your assistant be the brain.
+`orvima serve` puts a control dashboard at `http://127.0.0.1:8301` — watch every step stream into a live viewport, pause or resume a run, and approve held actions. `orvima run` launches a browser you own, with a persistent profile so your logins survive restarts. Autonomous runs need a brain — set `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` (any OpenAI-compatible endpoint, including local Ollama) — or just drive it through MCP and let your assistant be the brain.
 
 **Plug your AI into it (MCP):**
 
@@ -168,8 +158,16 @@ than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
 `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
 
 > `--mode demo` = offline simulator, opt-in. Perfect for CI and tours.
-> no flag = your own installed browser, streaming frames to the UI (the default)
+> no flag = your own installed browser, streaming frames to the dashboard (the default)
 > flags: `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
+
+**No browser, no internet, no keys? Try the offline tour instead:**
+
+```bash
+orvima run "send a message to Acme support" --mode demo
+```
+
+That goal gets planned and executed step by step against Orvima's built-in simulator — the same `browse_*` tools, the same verify-every-step loop, nothing installed except orvima itself. Add `--mode demo` anywhere to stay there.
 
 ---
 
@@ -236,7 +234,9 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 | `src/orvima/tools.py` | the `browse_*` tools as plain dict-in/dict-out functions |
 | `src/orvima/planner.py` | adaptive step-planner: `LLMPlanner` (any OpenAI-compatible endpoint) + `DemoPlanner` |
 | `src/orvima/agent.py` | sessions, the event bus, and the agent loop (snapshot → decide → act → verify) |
-| `src/orvima/api.py` | FastAPI app + SSE events (live frames, transcript, controls) |
+| `src/orvima/api.py` | FastAPI app + SSE events (live frames, transcript, controls); serves the dashboard at `/` and the owner page at `/owner` |
+| `src/orvima/dashboard.py` | the control dashboard — one self-served HTML file, no framework, no CDN |
+| `src/orvima/owner.py` | the passphrase-gated owner analytics page + `collect_analytics()` |
 | `src/orvima/mcp_server.py` | MCP (stdio) binding so any AI tool can drive it |
 | `src/orvima/cli.py` | argparse CLI with demo/serve/mcp/run/doctor |
 
@@ -254,9 +254,9 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 - [x] Offline demo mode (runs anywhere, powers CI)
 - [x] MCP server (works with mcp SDK v1 *and* v2)
 - [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (692 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
+- [x] CI + test suite (782 tests: demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
 - [x] One-line installers (`irm … | iex` / `curl … | sh`)
-- [ ] Dashboard UI (watch the agent live, approve actions)
+- [x] Dashboard UI at `http://127.0.0.1:8301` — live viewport, pause/resume/cancel, approvals queue, owner analytics page (passphrase-gated)
 - [ ] Media playback (file downloads are done: `browse_download`)
 - [ ] Cross-platform browser detection (macOS/Linux Chrome/Edge paths)
 
