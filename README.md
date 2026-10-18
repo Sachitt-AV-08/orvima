@@ -316,6 +316,28 @@ Orvima is **loopback-only by default** and stores nothing of yours remotely. It 
 
 These are honest constraints — not bugs. Orvima is designed for human-in-the-loop automation where the human handles the hard edge cases.
 
+## Hire me — MCP browser setup & integration
+
+Orvima is free to self-host, but wiring it into your stack takes time. I'll do it for you.
+
+**Flat-scope, 48-hour tasks:**
+- Wrap your API as an MCP server (stdio or SSE) — auth, retries, pagination
+- Fix a flaky MCP server — timeouts, selector drift, auth expiry
+- Browser automation script — login, scrape, form-fill, data extraction on your own Chrome/Edge/Brave
+- Orvima setup on your machine — install, MCP client config (Claude/Cursor/Copilot), LLM brain connected
+- Custom recipe + Sentinel-style gate — classify `browse_click` as destructive vs safe, hold payment steps for a human
+
+**Pricing (INR, paid by UPI):**
+- One task — ₹3,000 flat (₹1,500 to start, ₹1,500 when you've seen it run)
+- Hourly — ₹2,500/hr
+- Retainer — ₹40,000/month (~4–5 hrs/week, cancel anytime)
+
+Contact: [sachittav@gmail.com](mailto:sachittav@gmail.com) — or reply on GitHub with one sentence about what you want automated.
+
+*Note: I'm under 18. A parent or guardian should be the contracting party so the agreement holds. The tech is mine; the paperwork is theirs.*
+
+---
+
 ## License
 
 MIT. Free forever. Self-host it, fork it, run it on your own boxes.
