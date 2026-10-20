@@ -12,15 +12,15 @@
 const CMDS = {
   win: {
     cmd: "irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex",
-    note: 'Installs the v0.1.6 release &mdash; 22 tools.',
+    note: 'Installs the v0.2.0 release &mdash; 49 tools across 8 domains.',
   },
   unix: {
     cmd: "curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh",
-    note: 'Installs the v0.1.6 release &mdash; 22 tools.',
+    note: 'Installs the v0.2.0 release &mdash; 49 tools across 8 domains.',
   },
   src: {
     cmd: "git clone https://github.com/Sachitt-AV-08/orvima\ncd orvima && uv sync",
-    note: "Runs from source, so you get all 22 tools on <code>main</code>.",
+    note: "Runs from source, so you get all 49 tools on <code>main</code>.",
   },
 };
 

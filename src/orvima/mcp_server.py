@@ -15,7 +15,7 @@ import inspect
 import sys
 from typing import Any
 
-from . import prompts, tool_annotations, tools
+from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, voice, whatsapp
 from .agent import SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
@@ -58,6 +58,88 @@ def register_tools(server: Any, sess: Any) -> bool:
     for fn in tools.TOOLS:
         tool_name = fn.__name__[5:]
         bound = _bind(sess, fn)
+        kwargs: dict[str, Any] = {"name": tool_name, "description": _doc(fn)}
+        if supports_annotations:
+            annotations = _annotations_for(tool_name)
+            if annotations is not None:
+                kwargs["annotations"] = annotations
+        server.tool(**kwargs)(bound)
+
+    return supports_annotations
+
+
+def _bind_mail(fn):
+    """Bind fn for MCP without injecting a browser. Mail tools speak
+    SMTP/IMAP directly and take their own parameters; no session state needed.
+    Produces a real named function the MCP runtime can introspect.
+    """
+    name = fn.__name__
+    sig = inspect.signature(fn)
+    params = [p for p in sig.parameters.values()]
+
+    callsig = ", ".join(
+        p.name + ("=" + repr(p.default) if p.default is not inspect._empty else "")
+        for p in params
+    )
+    arglist = ", ".join(p.name for p in params) if params else ""
+    src = f"def the_tool({callsig}):\n    return __fn({arglist})\n"
+    ns: dict = {"__fn": fn}
+    exec(src, ns)  # trusted, static source from our own tool defs
+    tool = ns["the_tool"]
+    tool.__name__ = name
+    tool.__doc__ = _doc(fn)
+    return tool
+
+
+def register_mail_tools(server: Any) -> bool:
+    """Register every mail tool on `server`. Returns whether hints were attached.
+
+    Mail tools do not need a session or a browser: they connect directly to an
+    SMTP/IMAP server using credentials from call args or environment variables.
+    """
+    supports_annotations = "annotations" in inspect.signature(server.tool).parameters
+
+    for fn in mail.MAIL_TOOLS:
+        tool_name = fn.__name__  # mail_send / mail_read, domain-qualified like browse_*
+        bound = _bind_mail(fn)
+        kwargs: dict[str, Any] = {"name": tool_name, "description": _doc(fn)}
+        if supports_annotations:
+            annotations = _annotations_for(tool_name)
+            if annotations is not None:
+                kwargs["annotations"] = annotations
+        server.tool(**kwargs)(bound)
+
+    return supports_annotations
+
+
+def _bind_simple(fn):
+    """Bind fn for MCP with no injection. Used for tools that take all their
+    parameters from call args (voice, media, compute, whatsapp)."""
+    name = fn.__name__
+    sig = inspect.signature(fn)
+    params = [p for p in sig.parameters.values()]
+
+    callsig = ", ".join(
+        p.name + ("=" + repr(p.default) if p.default is not inspect._empty else "")
+        for p in params
+    )
+    arglist = ", ".join(p.name for p in params) if params else ""
+    src = f"def the_tool({callsig}):\n    return __fn({arglist})\n"
+    ns: dict = {"__fn": fn}
+    exec(src, ns)
+    tool = ns["the_tool"]
+    tool.__name__ = name
+    tool.__doc__ = _doc(fn)
+    return tool
+
+
+def register_module_tools(server: Any, tool_list: tuple, prefix: str = "") -> bool:
+    """Register a module's tools on the server. Returns whether hints were attached."""
+    supports_annotations = "annotations" in inspect.signature(server.tool).parameters
+
+    for fn in tool_list:
+        tool_name = fn.__name__
+        bound = _bind_simple(fn)
         kwargs: dict[str, Any] = {"name": tool_name, "description": _doc(fn)}
         if supports_annotations:
             annotations = _annotations_for(tool_name)
@@ -117,6 +199,26 @@ def run(demo: bool = False, name: str = "orvima") -> int:
             file=sys.stderr,
         )
 
+    if not register_mail_tools(server):
+        print(
+            "orvima: this mcp SDK predates tool annotations for mail tools.",
+            file=sys.stderr,
+        )
+
+    for mod_name, mod_tools in [
+        ("whatsapp", whatsapp.WHATSAPP_TOOLS),
+        ("voice", voice.VOICE_TOOLS),
+        ("media", media.MEDIA_TOOLS),
+        ("compute", compute.COMPUTE_TOOLS),
+        ("gate", gate.GATE_TOOLS),
+        ("router", router.ROUTER_TOOLS),
+    ]:
+        if not register_module_tools(server, mod_tools):
+            print(
+                f"orvima: this mcp SDK predates tool annotations for {mod_name} tools.",
+                file=sys.stderr,
+            )
+
     if not register_prompts(server):
         print(
             "orvima: this mcp SDK predates prompt support. Install mcp>=2 to get prompts.",
@@ -124,6 +226,11 @@ def run(demo: bool = False, name: str = "orvima") -> int:
         )
 
     import asyncio  # noqa: PLC0415
+    try:
+        import nest_asyncio  # noqa: PLC0415
+        nest_asyncio.apply()
+    except ImportError:
+        pass
 
     async def _serve() -> None:
         if hasattr(server, 'create_initialization_options'):
@@ -135,7 +242,22 @@ def run(demo: bool = False, name: str = "orvima") -> int:
             # mcp >= 2.0 (MCPServer) - run_stdio_async handles stdio internally
             await server.run_stdio_async()
 
-    asyncio.run(_serve())
+    # Playwright's sync_playwright().start() leaves a running event loop.
+    # Use the existing loop instead of creating a new one.
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # Schedule on the running loop and wait
+        future = asyncio.ensure_future(_serve(), loop=loop)
+        try:
+            loop.run_until_complete(future)
+        except RuntimeError:
+            import time
+            while not future.done():
+                time.sleep(0.1)
+            if future.exception():
+                raise future.exception()
+    else:
+        loop.run_until_complete(_serve())
     return 0
 
 

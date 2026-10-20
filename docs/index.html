@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>orvima — a browser agent that admits when it isn't sure</title>
-<meta name="description" content="Self-hosted browser agent. 22 browse_* MCP tools drive your own Chrome, Edge or Brave with your logins, on your machine. Every action is DOM-verified, and irreversible ones wait for a human.">
+<meta name="description" content="Self-hosted browser agent. 49 MCP tools across 8 domains: browse, mail, WhatsApp, voice, YouTube, music, math, science, gate, router. Your browser, your logins, your machine. Every action DOM-verified.">
 <meta property="og:title" content="orvima — a browser agent that admits when it isn't sure">
-<meta property="og:description" content="22 browse_* MCP tools. Your browser, your logins, your machine. Every action DOM-verified.">
+<meta property="og:description" content="49 MCP tools across 8 domains. Browse, email, WhatsApp, voice, YouTube, music, math, science, gate, router. Your machine. Every action DOM-verified.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://orvima.in">
 <meta name="twitter:card" content="summary_large_image">
@@ -58,7 +58,7 @@
           </div>
           <pre><code id="installcmd">irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | iex</code></pre>
           <p class="installnote" id="installnote">
-            Installs the v0.1.6 release &mdash; 22 <code>browse_*</code> tools.
+            Installs the v0.2.0 release &mdash; 49 MCP tools across 8 domains.
           </p>
         </div>
       </div>
@@ -120,7 +120,7 @@
       <div class="flow-node">
         <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 7.5 L5 12 L9.5 16.5"/><path d="M14.5 7.5 L19 12 L14.5 16.5"/></svg></div>
         <h3>MCP</h3>
-        <p>22 <code>browse_*</code> tools over one contract</p>
+        <p>49 MCP tools across 8 domains</p>
       </div>
       <div class="flow-arrow" aria-hidden="true">→</div>
 
@@ -281,7 +281,7 @@
           <tr>
             <th scope="row">MCP-native</th>
             <td>Varies</td>
-            <td>22 <code>browse_*</code> tools over one dict-in/dict-out contract; works with any MCP client</td>
+            <td>49 MCP tools across 8 domains over one dict-in/dict-out contract; works with any MCP client</td>
           </tr>
           <tr>
             <th scope="row">Goal routing</th>
@@ -295,11 +295,12 @@
 
   <!-- ------------------------------------------------------------------ -->
   <section id="tools" class="tools reveal">
-    <h2>22 tools, on <code>127.0.0.1</code></h2>
+    <h2>49 tools, on <code>127.0.0.1</code></h2>
     <p class="section-lede">
       Every tool is plain dict-in, dict-out over one contract, so the MCP server,
       the HTTP API and the agent loop cannot drift apart. Your cookies and
-      sessions never leave the machine.
+      sessions never leave the machine. Eight domains: browser, mail, WhatsApp,
+      voice, media, math, science, gate, router.
     </p>
     <div class="chips">
       <span>browse_navigate</span>
@@ -320,9 +321,39 @@
       <span>browse_switch_tab</span>
       <span>browse_list_tabs</span>
       <span>browse_close_tab</span>
-      <span>browse_go_back</span><span>browse_eval_audit</span><span>browse_set_files</span><span>browse_download</span></div>
+      <span>browse_go_back</span>
+      <span>browse_eval_audit</span>
+      <span>browse_set_files</span>
+      <span>browse_download</span>
+      <span>mail_send</span>
+      <span>mail_read</span>
+      <span>whatsapp_status</span>
+      <span>whatsapp_list_chats</span>
+      <span>whatsapp_read</span>
+      <span>whatsapp_send</span>
+      <span>whatsapp_react</span>
+      <span>voice_say</span>
+      <span>voice_listen</span>
+      <span>voice_set_style</span>
+      <span>voice_list_styles</span>
+      <span>youtube_transcript</span>
+      <span>youtube_search</span>
+      <span>music_search</span>
+      <span>music_play</span>
+      <span>math_solve</span>
+      <span>math_simplify</span>
+      <span>math_derivative</span>
+      <span>math_integral</span>
+      <span>math_plot_data</span>
+      <span>unit_convert</span>
+      <span>science_constants</span>
+      <span>gate_classify</span>
+      <span>gate_describe_action</span>
+      <span>gate_risk_concepts</span>
+      <span>goal_list_recipes</span>
+      <span>goal_route</span></div>
     <p class="footnote">
-      The count above is the v0.1.6 release your install command pulls.
+      The count above is the v0.2.0 release. 49 tools across 8 domains, all on 127.0.0.1.
     </p>
   </section>
 

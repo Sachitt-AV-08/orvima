@@ -131,6 +131,46 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
         True, False, True, True,
         "reads orvima's own audit log; sentinel tests assert it cannot perform an action",
     ),
+    # Mail tools are protocol-level: they speak SMTP/IMAP directly, no browser.
+    "mail_send": ToolBehaviour(
+        False, True, False, True,
+        "sends an email to an external mail server; repeating sends duplicates",
+    ),
+    "mail_read": ToolBehaviour(
+        True, False, True, True,
+        "reads mailbox contents via IMAP; no state changes, safe to repeat",
+    ),
+    # WhatsApp tools (parley-backed, local WhatsApp Desktop)
+    "whatsapp_status": ToolBehaviour(True, False, True, False, "reads WhatsApp attach health; no remote system"),
+    "whatsapp_list_chats": ToolBehaviour(True, False, True, False, "reads chat list; no state changes"),
+    "whatsapp_read": ToolBehaviour(True, False, True, False, "reads messages; no state changes"),
+    "whatsapp_send": ToolBehaviour(False, True, False, True, "sends a WhatsApp message; repeating sends duplicates"),
+    "whatsapp_react": ToolBehaviour(False, True, False, True, "reacts to a message; changes chat state"),
+    # Voice tools
+    "voice_say": ToolBehaviour(False, True, False, False, "speaks text aloud; plays audio through speakers"),
+    "voice_listen": ToolBehaviour(True, False, True, False, "records and transcribes speech; read-only capture"),
+    "voice_set_style": ToolBehaviour(False, False, True, False, "changes voice style setting; idempotent"),
+    "voice_list_styles": ToolBehaviour(True, False, True, False, "lists available voice styles"),
+    # Media tools
+    "youtube_transcript": ToolBehaviour(True, False, True, True, "fetches YouTube transcript; read-only"),
+    "youtube_search": ToolBehaviour(True, False, True, True, "searches YouTube; read-only"),
+    "music_search": ToolBehaviour(True, False, True, True, "searches for music; read-only"),
+    "music_play": ToolBehaviour(False, True, False, True, "plays audio; opens system media player"),
+    # Compute tools
+    "math_solve": ToolBehaviour(True, False, True, False, "solves equations; pure computation"),
+    "math_simplify": ToolBehaviour(True, False, True, False, "simplifies expressions; pure computation"),
+    "math_derivative": ToolBehaviour(True, False, True, False, "computes derivatives; pure computation"),
+    "math_integral": ToolBehaviour(True, False, True, False, "computes integrals; pure computation"),
+    "math_plot_data": ToolBehaviour(True, False, True, False, "generates plot data; pure computation"),
+    "unit_convert": ToolBehaviour(True, False, True, False, "converts units; pure computation"),
+    "science_constants": ToolBehaviour(True, False, True, False, "looks up constants; read-only"),
+    # Gate tools (sentinel-backed risk classifier)
+    "gate_classify": ToolBehaviour(True, False, True, False, "classifies action risk; read-only analysis"),
+    "gate_describe_action": ToolBehaviour(True, False, True, False, "describes action as text; read-only"),
+    "gate_risk_concepts": ToolBehaviour(True, False, True, False, "checks risk concepts; read-only"),
+    # Router tools (errands recipe matching)
+    "goal_list_recipes": ToolBehaviour(True, False, True, False, "lists available recipes; read-only"),
+    "goal_route": ToolBehaviour(True, False, True, False, "matches goal to recipe; read-only"),
 }
 
 

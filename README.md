@@ -8,7 +8,7 @@
 
 **Your browser, driven by any AI — with a live viewport you control.**
 
-Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) gets a full set of `browse_*` hands on **your own Chrome, Edge or Brave** — navigate, click, type, extract, verify, multi-tab — powered by your logins, running on your machine, while you watch every step in a live viewport and stop it whenever you like.
+Orvima is a self-hosted, local-first agent that gives any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) 49 tools across 8 domains - **browser, mail, WhatsApp, voice, media, math, science, and a safety gate** - all running on your own machine against your own browser, your own logins, and your own data. Navigate, click, type, extract, verify, send email, message on WhatsApp, speak with a distinctive voice, fetch YouTube transcripts, solve equations, convert units, and classify risk - all while you watch every step in a live viewport and stop it whenever you like.
 
 ```
   any AI tool            MCP / stdio            +--------------------+
@@ -21,6 +21,21 @@ Orvima is a self-hosted, local-first browser agent. Any MCP-capable AI tool (Cla
 ```
 
 No cloud, no API key to try it, no account. Install it, point your AI at it, done.
+
+## 49 tools across 8 domains
+
+| Domain | Tools | What they do |
+|--------|-------|-------------|
+| **browser** | 22 | Navigate, click, type, fill, select, scroll, snapshot, screenshot, extract, eval, tabs, wait, download, set files |
+| **mail** | 2 | Send email (SMTP), read inbox (IMAP) |
+| **whatsapp** | 5 | Status, list chats, read messages, send, react (via parley/WhatsApp Desktop) |
+| **voice** | 4 | Speak (Edge TTS + Ultron modulation), listen (Whisper STT), set/list styles |
+| **media** | 4 | YouTube transcript, YouTube search, music search, music play |
+| **compute** | 7 | Math solve/simplify/derivative/integral/plot, unit convert, science constants |
+| **gate** | 3 | Risk classify, describe action, check risk concepts (sentinel-backed) |
+| **router** | 2 | List recipes, route goal to reviewed recipe or refuse (errands-backed) |
+
+All tools are plain dict-in, dict-out over one contract. Credentials come from environment variables, never hardcoded. Everything runs on 127.0.0.1.
 
 ---
 
@@ -242,7 +257,10 @@ Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survi
 
 ## Roadmap
 
-- [x] Core agent: 22 `browse_*` tools, verify-after-every-step loop
+- [x] Core agent: 49 MCP tools across 8 domains (browse, mail, whatsapp, voice, media, compute, gate, router)
+- [x] Voice: Edge TTS + Ultron modulation (pitch shift, reverb, metallic EQ) + Whisper STT
+- [x] Safety gate: sentinel risk classifier (concept matching + embedding)
+- [x] Goal router: errands recipe matching (goal -> reviewed recipe or refuse)
 - [x] Drives **your** installed Chrome/Edge/Brave (persistent profile) or attaches to a running browser over CDP
 - [x] Adaptive step-planner (snapshot → decide → act) with LLM / local-Ollama / MCP brains
 - [x] Classified recovery: transient failures get a second turn, irreversible ones never do

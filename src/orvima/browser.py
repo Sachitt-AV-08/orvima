@@ -477,6 +477,7 @@ class BrowserController(NavigationBackend):
         self.page = None
         self._pw = None
         self._closed = False
+        self._started = False
         # What each ref described at the last snapshot. Populated by snapshot()
         # and consulted before every ref-based action.
         self._registry = RefRegistry()
@@ -492,6 +493,9 @@ class BrowserController(NavigationBackend):
         self.eval_audit_limit = 200
 
     def start(self) -> None:
+        if self._started:
+            return
+        self._started = True
         from playwright.sync_api import sync_playwright
 
         self._pw = sync_playwright().start()
