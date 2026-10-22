@@ -1,6 +1,6 @@
 # Orvima API Reference
 
-Orvima exposes 49 MCP tools across 8 categories. All tools follow the MCP protocol: `{ name, arguments }` input, structured output.
+Orvima exposes 60 MCP tools across 9 categories (added Vision). All tools follow the MCP protocol: `{ name, arguments }` input, structured output.
 
 ## Browser Tools (22)
 
@@ -134,3 +134,20 @@ Orvima exposes 49 MCP tools across 8 categories. All tools follow the MCP protoc
 | `/api/sessions/{id}` | DELETE | Destroy session |
 
 **Deploy returns:** `{ session_id, cdp_url, ws_url, port, expires_in_minutes, connect_example }`
+## Vision Tools (11)
+
+Local-first OCR + image/video recognition. Tesseract 5 + OpenCV. No API keys, no network.
+
+| Tool | Description | Key Params |
+|------|-------------|------------|
+| ision_ocr | Text from an image (preprocessed, multi-PSM) | image_path, lang, detail |
+| ision_ocr_region | OCR a bounding box only | image_path, x, y, width, height |
+| ision_find_text | Is query on the page/image, with location | image_path, query |
+| ision_describe | Dimensions, palette, edge density, layout | image_path |
+| ision_match_template | Locate a template image in a scene | image_path, 	emplate_path, 	hreshold |
+| ision_detect_faces | Haar-cascade face count + boxes (privacy-safe) | image_path |
+| ision_video_frames | Extract N evenly-spaced frames | ideo_path, count, output_dir |
+| ision_video_ocr | Per-frame OCR with timestamps | ideo_path, sample_count, lang |
+| ision_video_scene_changes | Scene cuts by frame diff | ideo_path, 	hreshold |
+| ision_compare_ocr | 4 rotations x 3 modes (last-resort) | image_path |
+| ision_ocr_screenshot | OCR the live browser screenshot | (browser-bound, no params) |
