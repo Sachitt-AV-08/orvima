@@ -343,3 +343,27 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     }
   });
 });
+// ---- Copy-to-clipboard for code blocks ----
+(function () {
+  function makeClip() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', () => {
+      const pre = btn.closest('pre') || btn.parentElement;
+      const code = (pre && pre.querySelector('code')) || pre;
+      navigator.clipboard.writeText(code ? code.textContent : '').then(() => {
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = 'Copy'), 1600);
+      });
+    });
+    return btn;
+  }
+  document.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector('.copy-btn')) return;
+    pre.style.position = 'relative';
+    const btn = makeClip();
+    pre.appendChild(btn);
+  });
+})();
