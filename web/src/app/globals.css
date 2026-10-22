@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+html { scroll-behavior: smooth; }
+body {
+  background: #090a0d;
+  color: #f0f2f5;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: #f5a524; color: #141004; }
+a { text-decoration: none; }
+.container { max-width: 1120px; margin-inline: auto; }
+.glass { background: rgba(17,20,25,.7); backdrop-filter: blur(8px); }
