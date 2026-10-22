@@ -967,3 +967,7 @@ h1 {
 .proof-band .proof-chip { padding: 10px 14px; border-radius: 999px; background: var(--accent-soft); border: 1px solid rgba(245,165,36,.25); font-size: 0.85rem; color: var(--fg); }
 
 @media (max-width: 720px) { .faq-grid { grid-template-columns: 1fr; } }
+
+.hero-trust { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 28px; }
+.copy-btn { position: absolute; top: 12px; right: 12px; padding: 6px 12px; font-size: .75rem; border-radius: 999px; border: 1px solid var(--line-bright); background: var(--bg-raised); color: var(--fg-dim); cursor: pointer; transition: color var(--transition), border-color var(--transition), transform var(--transition); }
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
