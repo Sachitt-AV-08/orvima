@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Backend API - Orvima SaaS
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ORVIMA_SAAS_BASE_PORT=9222
+      - ORVIMA_SAAS_MAX_SESSIONS=10
+      - ORVIMA_SAAS_TTL_MINUTES=60
+      - CHROME_BIN=/usr/bin/google-chrome
+    volumes:
+      - /tmp:/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend - Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_PRO_PRICE_ID=${STRIPE_PRO_PRICE_ID}
+      - STRIPE_TEAM_PRICE_ID=${STRIPE_TEAM_PRICE_ID}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Chrome for backend (if not using bundled)
+  chrome:
+    image: browserless/chrome:latest
+    ports:
+      - "9222:9222"
+    environment:
+      - MAX_CONCURRENT_SESSIONS=10
+      - MAX_QUEUE_LENGTH=100
+      - PREBOOT_CHROME=true
+      - CHROME_ARGS=--disable-gpu --no-sandbox --disable-dev-shm-usage
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+
+networks:
+  default:
+    name: orvima-saas-network

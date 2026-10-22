@@ -15,7 +15,7 @@ import inspect
 import sys
 from typing import Any
 
-from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, voice, whatsapp
+from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, vision, voice, whatsapp
 from .agent import SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
@@ -212,12 +212,25 @@ def run(demo: bool = False, name: str = "orvima") -> int:
         ("compute", compute.COMPUTE_TOOLS),
         ("gate", gate.GATE_TOOLS),
         ("router", router.ROUTER_TOOLS),
+        ("vision", vision.VISION_TOOLS_SIMPLE),
     ]:
         if not register_module_tools(server, mod_tools):
             print(
                 f"orvima: this mcp SDK predates tool annotations for {mod_name} tools.",
                 file=sys.stderr,
             )
+
+    # Browser-bound vision tools (use the user's real Chrome like browse_*)
+    supports_annotations = "annotations" in inspect.signature(server.tool).parameters
+    for fn in vision.VISION_TOOLS_BROWSER:
+        tool_name = fn.__name__
+        bound = _bind(sess, fn)
+        kwargs = {"name": tool_name, "description": _doc(fn)}
+        if supports_annotations:
+            annotations = _annotations_for(tool_name)
+            if annotations is not None:
+                kwargs["annotations"] = annotations
+        server.tool(**kwargs)(bound)
 
     if not register_prompts(server):
         print(
@@ -255,7 +268,7 @@ def run(demo: bool = False, name: str = "orvima") -> int:
             while not future.done():
                 time.sleep(0.1)
             if future.exception():
-                raise future.exception()
+                raise future.exception() from None
     else:
         loop.run_until_complete(_serve())
     return 0

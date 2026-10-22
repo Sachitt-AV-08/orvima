@@ -270,7 +270,7 @@ class TestWhatAFreshInstallActuallyDoes:
         real_import = builtins.__import__
 
         def blocked(name, *a, **k):
-            if name == "sentinel" or name.startswith("sentinel."):
+            if name == "sentinel" or name.startswith("sentinel.") or name == "orvima.sentinel" or name.startswith("orvima.sentinel."):
                 raise ModuleNotFoundError("No module named 'sentinel'")
             return real_import(name, *a, **k)
 

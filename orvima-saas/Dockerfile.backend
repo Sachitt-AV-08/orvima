@@ -1,0 +1,31 @@
+# Backend Dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright dependencies
+RUN pip install playwright && playwright install-deps chromium
+
+WORKDIR /app
+
+# Copy orvima package
+COPY ../src/orvima /app/orvima
+COPY ../pyproject.toml /app/
+COPY ../README.md /app/
+
+# Install orvima in development mode
+RUN pip install -e /app
+
+# Expose port
+EXPOSE 8000
+
+# Run the SaaS API
+CMD ["python", "-m", "uvicorn", "orvima.saas_api:app", "--host", "0.0.0.0", "--port", "8000"]

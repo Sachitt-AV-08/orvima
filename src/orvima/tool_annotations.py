@@ -156,6 +156,18 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
     "youtube_search": ToolBehaviour(True, False, True, True, "searches YouTube; read-only"),
     "music_search": ToolBehaviour(True, False, True, True, "searches for music; read-only"),
     "music_play": ToolBehaviour(False, True, False, True, "plays audio; opens system media player"),
+    # Vision tools (OCR + image + video recognition, all local, no network)
+    "vision_ocr": ToolBehaviour(True, False, True, False, "reads text from an image on disk; writes no state"),
+    "vision_ocr_region": ToolBehaviour(True, False, True, False, "OCR of one image region; read-only"),
+    "vision_find_text": ToolBehaviour(True, False, True, False, "finds a string in an image; read-only"),
+    "vision_describe": ToolBehaviour(True, False, True, False, "summarises an image (size, palette, edges); read-only"),
+    "vision_match_template": ToolBehaviour(True, False, True, False, "finds a template inside an image; read-only"),
+    "vision_detect_faces": ToolBehaviour(True, False, True, False, "face count via Haar cascade; no identity"),
+    "vision_video_frames": ToolBehaviour(False, False, False, False, "extracts frames to disk; writes files"),
+    "vision_video_ocr": ToolBehaviour(False, False, False, False, "samples frames + per-frame OCR; writes frame PNGs"),
+    "vision_video_scene_changes": ToolBehaviour(True, False, True, False, "detects scene cuts; read-only"),
+    "vision_compare_ocr": ToolBehaviour(True, False, True, False, "runs OCR 4 rotations; read-only"),
+    "vision_ocr_screenshot": ToolBehaviour(True, False, True, True, "OCR of live browser screenshot; read-only"),
     # Compute tools
     "math_solve": ToolBehaviour(True, False, True, False, "solves equations; pure computation"),
     "math_simplify": ToolBehaviour(True, False, True, False, "simplifies expressions; pure computation"),

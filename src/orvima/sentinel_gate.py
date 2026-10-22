@@ -158,6 +158,8 @@ class SentinelGate:
         # names are per-page: without the session, session A looking at e9 and
         # then session B looking at its own e9 reads as the element having moved.
         self._seen_refs: dict[tuple[str, str], str] = {}
+        # Memory of human-approved actions: their signatures are auto-approved.
+        self._approval_memory: set[str] = set()
         self.approval_ttl = approval_ttl
         self.stats: dict[str, int] = {
             "evaluated": 0,
@@ -325,6 +327,19 @@ class SentinelGate:
         if not self.enabled:
             return GateResult(allowed=True, risk="unknown", reason="gate disabled")
 
+        # Approval memory: if a human has approved the exact same action
+        # before, auto-approve without re-running the classifier.
+        signature = self._approval_signature(tool, args)
+        if signature in self._approval_memory:
+            self.stats["auto_approved"] += 1
+            return GateResult(
+                allowed=True,
+                risk="remembered",
+                reason="auto-approved: human previously approved this exact action",
+                confidence=1.0,
+                degraded=False,
+            )
+
         policy = self._policy
         if policy is None:
             self.stats["degraded"] += 1
@@ -430,6 +445,9 @@ class SentinelGate:
             request = self._pending.pop(request_id, None)
             if request is not None:
                 self.stats["approved" if approved else "denied"] += 1
+                if approved and request is not None:
+                    signature = self._approval_signature(request.tool, request.args)
+                    self._approval_memory.add(signature)
         return request
 
     def lapsed(self, request_id: str) -> bool:
@@ -483,6 +501,29 @@ class SentinelGate:
             return {**self.stats, "pending": len(self._pending)}
 
 
+    def _approval_signature(
+        self, tool: str, args: Any = None
+    ) -> str:
+        """Create a deterministic signature for an action.
+
+        Only the exact same tool + same selector/text/etc. matches, so
+        approving "place your order" does NOT auto-approve "delete account".
+        """
+        parts = [tool]
+        args = args or {}
+        if "selector" in args:
+            parts.append("selector=" + str(args["selector"]))
+        if "ref" in args:
+            parts.append("ref=" + str(args["ref"]))
+        if "url" in args:
+            parts.append("url=" + str(args["url"]))
+        if "value" in args:
+            parts.append("value=" + str(args["value"]))
+        if "text" in args:
+            parts.append("text=" + str(args["text"]))
+        return "::".join(parts)
+
+
 # ----------------------------------------------------------------- helpers ----
 
 def _item_resolver() -> Callable[[Mapping[str, object]], str]:
@@ -497,10 +538,16 @@ def _item_resolver() -> Callable[[Mapping[str, object]], str]:
     ref has no text and a click would otherwise be unclassifiable.
     """
     try:
-        from sentinel import make_item_resolver
+        from orvima.sentinel import make_item_resolver
 
         return make_item_resolver()
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from sentinel import make_item_resolver
+
+            return make_item_resolver()
+        except (ImportError, ModuleNotFoundError):
+            pass
 
         def describe(item: Mapping[str, object]) -> str:
             parts = [
@@ -560,13 +607,25 @@ def make_gate(**kwargs: Any) -> SentinelGate:
     mode = kwargs.pop("classifier_mode", "off")
     gate = SentinelGate(enabled=kwargs.pop("enabled", True), classifier_mode=mode, **kwargs)
     try:
-        from sentinel import Classifier, ClassifierMode, HashingEmbedder, Policy
+        from orvima.sentinel import Classifier, ClassifierMode, HashingEmbedder, Policy
 
         policy = Policy(
             Classifier(HashingEmbedder()),
             classifier_mode=ClassifierMode(mode),
         )
         gate.attach_policy(policy)
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from sentinel import Classifier, ClassifierMode, HashingEmbedder, Policy
+
+            policy = Policy(
+                Classifier(HashingEmbedder()),
+                classifier_mode=ClassifierMode(mode),
+            )
+            gate.attach_policy(policy)
+        except Exception:
+            # Left with no policy: every check returns degraded/refuse.
+            pass
     except Exception:
         # Left with no policy: every check returns degraded/refuse.
         pass

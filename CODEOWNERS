@@ -1,0 +1,22 @@
+# CODEOWNERS
+# These users will be requested for review when someone opens a pull request.
+# * @Sachitt-AV-08
+
+# Documentation
+docs/ @Sachitt-AV-08
+
+# Core MCP tools
+src/orvima/tools/ @Sachitt-AV-08
+
+# Browser automation
+src/orvima/browser.py @Sachitt-AV-08
+src/orvima/agent.py @Sachitt-AV-08
+
+# SaaS API
+src/orvima/saas_api.py @Sachitt-AV-08
+
+# Mail/WhatsApp/Voice tools
+src/orvima/mail.py @Sachitt-AV-08
+
+# Frontend
+orvima-saas/frontend/ @Sachitt-AV-08
