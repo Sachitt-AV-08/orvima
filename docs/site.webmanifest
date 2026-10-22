@@ -1,0 +1,10 @@
+{
+  "name": "orvima",
+  "short_name": "orvima",
+  "description": "Self-hosted browser agent. DOM-verified steps, fail-closed safety gate.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090a0d",
+  "theme_color": "#090a0d",
+  "icons": []
+}
