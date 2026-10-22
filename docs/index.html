@@ -390,6 +390,14 @@ cd orvima && uv sync</code></pre>
       </article>
     </div>
 
+    <div class="proof-band" data-reveal="up">
+      <span class="proof-chip">MIT licensed</span>
+      <span class="proof-chip">782 tests across 46 files</span>
+      <span class="proof-chip">11/11 bench pass rate</span>
+      <span class="proof-chip">5/5 irreversible actions held</span>
+      <span class="proof-chip">Runs offline in demo mode</span>
+    </div>
+
     <div class="repro" data-reveal="up">
       <p>Reproduce them yourself:</p>
       <div class="repro-commands">
@@ -398,6 +406,31 @@ cd orvima && uv sync</code></pre>
         <code>python -m orvima.bench</code>
       </div>
       <p class="footnote honest">The bench runs against a simulated site with a scripted planner. It measures the agent loop's control flow, not real-world browsing ability — a high score there is not evidence orvima can drive your site.</p>
+    </div>
+  </section>
+
+  <section id="faq" class="section section-alt" aria-labelledby="faq-title">
+    <div class="section-header" data-reveal="up">
+      <h2 id="faq-title">Questions before you install</h2>
+      <p class="section-lede">The questions that decide whether an agent tool survives past a demo.</p>
+    </div>
+    <div class="faq-grid" data-reveal="up">
+      <div class="faq-card">
+        <h3>Does it need an API key?</h3>
+        <p>No. Install it and connect it to Claude Desktop, Cursor or Copilot. Autonomous runs can use any OpenAI-compatible brain, including local Ollama.</p>
+      </div>
+      <div class="faq-card">
+        <h3>Is my data sent to a vendor?</h3>
+        <p>No. Everything runs on 127.0.0.1 against your own browser. Cookies, sessions and scrapes never leave your machine.</p>
+      </div>
+      <div class="faq-card">
+        <h3>Can it act without me?</h3>
+        <p>Routine work runs freely. Outward actions (delete, purchase, send) are held by a fail-closed gate and expire if unanswered.</p>
+      </div>
+      <div class="faq-card">
+        <h3>Is it free?</h3>
+        <p>Yes. MIT licensed, self-hosted, no account. You own every byte and every commit.</p>
+      </div>
     </div>
   </section>
 
