@@ -336,7 +336,10 @@ def tool_browse_snapshot(
 
     items = data.get("items") or []
     total = len(items)
-    start = max(0, int(offset or 0))
+    try:
+        start = max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        start = 0
     cap = _clamp(limit, 0, SNAPSHOT_MAX_ITEMS, SNAPSHOT_DEFAULT_ITEMS)
     window = items[start : start + cap] if cap else []
     text_cap = _clamp(max_text, 0, SNAPSHOT_MAX_TEXT, SNAPSHOT_DEFAULT_TEXT)
@@ -482,9 +485,17 @@ def tool_browse_set_files(browser, paths: list[str], selector: str | None = None
     Fails if a path does not exist or the target is not a file input. It will not
     guess, and it will not attach an empty selection.
     """
+    if isinstance(paths, str):
+        return {"ok": False, "error": "paths must be a list of file paths, not a string"}
+    if paths is None:
+        paths = []
+    if not isinstance(paths, (list, tuple)):
+        return {"ok": False, "error": "paths must be a list of file paths"}
+    if any(not isinstance(p, str) for p in paths):
+        return {"ok": False, "error": "paths must be a list of strings"}
     try:
         sel = _resolve(browser, ref, selector)
-        return {"ok": True, **browser.set_files(sel, list(paths or []))}
+        return {"ok": True, **browser.set_files(sel, list(paths))}
     except Exception as exc:
         return _error(exc, _candidates(browser))
 

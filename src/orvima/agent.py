@@ -302,7 +302,10 @@ class AgentLoop:
                 name = decision["tool"]
                 args = decision.get("args", {})
 
-                if not self._authorise(step, name, args):
+                # Extract user_requested flag for strong-request override
+                user_requested = args.pop("user_requested", False)
+
+                if not self._authorise(step, name, args, user_requested):
                     # The gate asked a human and the answer was no. Not an
                     # error: the run ends cleanly, because "I will not do that"
                     # is a complete answer to "do this task".
@@ -349,7 +352,7 @@ class AgentLoop:
             sess.log("error", error=str(exc))
             return {"ok": False, "error": str(exc)}
 
-    def _authorise(self, step: int, name: str, args: dict) -> bool:
+    def _authorise(self, step: int, name: str, args: dict, user_requested: bool = False) -> bool:
         """Consult the gate. True = run it, False = a human said no.
 
         **No gate means fully unattended.** Every action runs without being
@@ -376,12 +379,16 @@ class AgentLoop:
         a verdict via :meth:`resolve_approval`. There is no timeout on purpose:
         this is a purchase decision, and answering it in thirty seconds by reflex
         is worse than waiting. The API can cancel the run to unblock.
+
+        ``user_requested`` models a strong, explicit user order (Jev's
+        ``user_requested`` semantics). It can lift an outward-risk action from
+        ask→allow, but it can NEVER lift a destructive-risk denial.
         """
         if self.gate is None:
             return True
 
         sess = self.session
-        result = self.gate.check(name, args, session_id=sess.id)
+        result = self.gate.check(name, args, session_id=sess.id, user_requested=user_requested)
         sess.log("gate", step=step, tool=name, **result.as_log())
         sess.bus.emit({"type": "gate", "step": step, "tool": name, **result.as_log()})
         if result.allowed:

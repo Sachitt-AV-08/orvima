@@ -31,40 +31,49 @@ def gate_classify(tool: str, args: dict | None = None, page_url: str = "", mode:
     needed, confidence, and reason. Uses sentinel's concept matching + classifier.
     """
     global _DEFAULT_POLICY
-    if mode != "advisory":
-        _DEFAULT_POLICY = _make_policy(mode)
+    try:
+        if mode != "advisory":
+            _DEFAULT_POLICY = _make_policy(mode)
 
-    decision = _DEFAULT_POLICY.evaluate(tool, args or {}, page_url=page_url)
-    return {
-        "ok": True,
-        "tool": tool,
-        "risk": decision.risk.value,
-        "needs_human": decision.needs_human,
-        "confidence": round(decision.confidence, 4),
-        "reason": decision.reason,
-        "floor": decision.floor.value,
-        "degraded": decision.degraded,
-    }
+        decision = _DEFAULT_POLICY.evaluate(tool, args or {}, page_url=page_url)
+        return {
+            "ok": True,
+            "tool": tool,
+            "risk": decision.risk.value,
+            "needs_human": decision.needs_human,
+            "confidence": round(decision.confidence, 4),
+            "reason": decision.reason,
+            "floor": decision.floor.value,
+            "degraded": decision.degraded,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def gate_describe_action(tool: str, args: dict | None = None) -> dict:
     """Describe what a tool call does as text (for risk matching)."""
-    text = Policy.describe_action(tool, args or {})
-    return {"ok": True, "tool": tool, "description": text}
+    try:
+        text = Policy.describe_action(tool, args or {})
+        return {"ok": True, "tool": tool, "description": text}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def gate_risk_concepts(text: str) -> dict:
     """Check if text matches any risk concept from sentinel's concept list."""
-    from .sentinel.policy import matches_concept, matches_weak
-    concept = matches_concept(text)
-    weak = matches_weak(text)
-    return {
-        "ok": True,
-        "text": text,
-        "matched_concept": concept,
-        "matched_weak": weak,
-        "is_risky": concept is not None or weak is not None,
-    }
+    try:
+        from .sentinel.policy import matches_concept, matches_weak
+        concept = matches_concept(text)
+        weak = matches_weak(text)
+        return {
+            "ok": True,
+            "text": text,
+            "matched_concept": concept,
+            "matched_weak": weak,
+            "is_risky": concept is not None or weak is not None,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 GATE_TOOLS = (

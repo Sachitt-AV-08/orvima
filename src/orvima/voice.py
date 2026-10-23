@@ -35,6 +35,13 @@ try:
 except ImportError:
     _SCIPY_AVAILABLE = False
 
+try:
+    import nest_asyncio as _nest_asyncio
+    _NEST_ASYNCIO_AVAILABLE = True
+except ImportError:
+    _nest_asyncio = None
+    _NEST_ASYNCIO_AVAILABLE = False
+
 # Ultron style parameters
 _STYLES = {
     "ultron": {"pitch_shift": -2.5, "reverb": 0.3, "metallic": True, "speed": 0.95},
@@ -145,10 +152,23 @@ def _generate_audio_bytes(text: str, voice: str, rate: str) -> bytes:
     to a fresh loop running in a worker thread in that case.
     """
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
+        # No running loop: safe to use asyncio.run directly.
         return asyncio.run(_edge_tts_generate(text, voice, rate))
 
+    # A loop is already running. Prefer nest_asyncio when available so the
+    # coroutine runs on that loop instead of spawning a worker thread.
+    if _NEST_ASYNCIO_AVAILABLE and _nest_asyncio is not None:
+        try:
+            _nest_asyncio.apply(loop)
+            return loop.run_until_complete(_edge_tts_generate(text, voice, rate))
+        except Exception:
+            # Fall through to the thread-based fallback below.
+            pass
+
+    # nest_asyncio unavailable (or apply failed): run in a worker thread with
+    # its own fresh event loop.
     result: dict = {}
 
     def _worker() -> None:

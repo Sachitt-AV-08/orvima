@@ -67,12 +67,13 @@ def math_integral(expression: str, variable: str = "x") -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def math_plot_data(expression: str, x_min: float = -10, x_max: float = 10, points: int = 100) -> dict:
+def math_plot_data(expression: str, x_min: float = -10, x_max: float = 10, points: int = 100,
+                   variable: str = "x") -> dict:
     """Generate (x, y) data points for plotting an expression."""
     try:
         import numpy as np
         import sympy as sp
-        var = sp.Symbol("x")
+        var = sp.Symbol(variable)
         f = sp.lambdify(var, sp.sympify(expression), "numpy")
         xs = np.linspace(x_min, x_max, points)
         ys = f(xs)
@@ -81,6 +82,7 @@ def math_plot_data(expression: str, x_min: float = -10, x_max: float = 10, point
         return {
             "ok": True,
             "expression": expression,
+            "variable": variable,
             "x": [round(float(v), 4) for v in xs],
             "y": [round(float(v), 4) for v in ys],
         }
@@ -108,26 +110,53 @@ def unit_convert(value: float, from_unit: str, to_unit: str) -> dict:
     from_u = from_unit.lower().strip()
     to_u = to_unit.lower().strip()
 
-    # Temperature (special)
-    if from_u in ("c", "celsius") and to_u in ("f", "fahrenheit"):
+    def _temp_canonical(u: str):
+        if u in ("c", "celsius"):
+            return "c"
+        if u in ("f", "fahrenheit"):
+            return "f"
+        if u in ("k", "kelvin"):
+            return "k"
+        return None
+
+    fc = _temp_canonical(from_u)
+    tc = _temp_canonical(to_u)
+
+    # Identity conversion (any unit, including temperature aliases).
+    if from_u == to_u or (fc is not None and fc == tc):
         return {"ok": True, "value": value, "from": from_unit, "to": to_unit,
-                "result": round(value * 9/5 + 32, 6)}
-    if from_u in ("f", "fahrenheit") and to_u in ("c", "celsius"):
+                "result": round(value, 6) if isinstance(value, (int, float)) else value}
+
+    # Temperature conversions: full matrix C/F/K both directions.
+    if fc is not None and tc is not None:
+        # Convert to Celsius first.
+        if fc == "c":
+            celsius = value
+        elif fc == "f":
+            celsius = (value - 32) * 5 / 9
+        else:  # k
+            celsius = value - 273.15
+
+        if tc == "c":
+            result = celsius
+        elif tc == "f":
+            result = celsius * 9 / 5 + 32
+        else:  # k
+            result = celsius + 273.15
         return {"ok": True, "value": value, "from": from_unit, "to": to_unit,
-                "result": round((value - 32) * 5/9, 6)}
-    if from_u in ("c", "celsius") and to_u in ("k", "kelvin"):
-        return {"ok": True, "value": value, "from": from_unit, "to": to_unit,
-                "result": round(value + 273.15, 6)}
-    if from_u in ("k", "kelvin") and to_u in ("c", "celsius"):
-        return {"ok": True, "value": value, "from": from_unit, "to": to_unit,
-                "result": round(value - 273.15, 6)}
+                "result": round(result, 6)}
 
     key = (from_u, to_u)
     if key in conversions:
         return {"ok": True, "value": value, "from": from_unit, "to": to_unit,
                 "result": round(value * conversions[key], 6)}
 
-    return {"ok": False, "error": f"unknown conversion {from_unit} -> {to_unit}"}
+    supported = sorted(set(
+        [u for pair in conversions for u in pair]
+        + ["c", "f", "k", "celsius", "fahrenheit", "kelvin"]
+    ))
+    return {"ok": False, "error": f"unknown conversion {from_unit} -> {to_unit}",
+            "supported_units": supported}
 
 
 def science_constants(name: str = "") -> dict:
