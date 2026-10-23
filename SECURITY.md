@@ -1,4 +1,6 @@
-# Security Policy
+# Orvima Security Policy — Local-First Safety and Approval Gate
+
+> **Meta description:** Orvima security policy: local-first safety, loopback-only defaults, Sentinel approval gate, vulnerability reporting, and best practices for AI agent browser automation.
 
 ## Supported Versions
 
@@ -64,3 +66,10 @@ on a strong request ("user requested" can lift "ask" to "allow", never
 tool/args signature that was allowed.
 
 No emoji, no AI raster art, no external network calls in the safety path.
+
+## Related Documentation
+
+- [README](README.md) — overview and quick start.
+- [API Reference](docs/api.md) — full MCP tools reference.
+- [Launch Announcements](docs/launch.md)
+- [Disclaimer](DISCLAIMER.md)

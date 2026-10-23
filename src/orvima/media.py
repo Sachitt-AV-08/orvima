@@ -123,31 +123,34 @@ def music_search(query: str, limit: int = 5) -> dict:
 def music_play(url: str) -> dict:
     """Play a YouTube video's audio using the system player.
 
-    Downloads audio to a temp file and plays it via the default media player.
+    Downloads audio to a persistent file and plays it via the default media player.
     """
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_path = Path(tmpdir) / "audio.mp3"
-            result = subprocess.run(
-                ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url],
-                capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode != 0:
-                return {"ok": False, "error": result.stderr.strip()[:500]}
+        # Use persistent directory so the file survives after function returns
+        media_dir = Path.home() / ".orvima" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        out_path = media_dir / "audio.mp3"
 
-            # Find the downloaded file
-            audio_files = list(Path(tmpdir).glob("*.mp3"))
-            if not audio_files:
-                return {"ok": False, "error": "no audio file downloaded"}
+        result = subprocess.run(
+            ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return {"ok": False, "error": result.stderr.strip()[:500]}
 
-            # Play via system default
-            import os
-            if os.name == "nt":
-                os.startfile(str(audio_files[0]))
-            else:
-                subprocess.Popen(["xdg-open", str(audio_files[0])])
+        # Find the downloaded file
+        audio_files = list(media_dir.glob("*.mp3"))
+        if not audio_files:
+            return {"ok": False, "error": "no audio file downloaded"}
 
-            return {"ok": True, "url": url, "file": str(audio_files[0])}
+        # Play via system default
+        import os
+        if os.name == "nt":
+            os.startfile(str(audio_files[0]))
+        else:
+            subprocess.Popen(["xdg-open", str(audio_files[0])])
+
+        return {"ok": True, "url": url, "file": str(audio_files[0])}
     except FileNotFoundError:
         return {"ok": False, "error": "yt-dlp not installed: pip install yt-dlp"}
     except Exception as exc:

@@ -37,7 +37,13 @@ except Exception:
     np = None
     _NP_AVAILABLE = False
 
-from PIL import Image
+try:
+    from PIL import Image as _PILImage
+    Image = _PILImage
+    _PIL_AVAILABLE = True
+except Exception:
+    Image = None
+    _PIL_AVAILABLE = False
 
 try:
     import pytesseract as _pt
@@ -105,12 +111,16 @@ def _img_path(image_path):
 def _decode_image(path):
     img = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if img is None:
+        if not _PIL_AVAILABLE or Image is None:
+            raise RuntimeError("Pillow not installed. Run: pip install pillow")
         pil = Image.open(path).convert("RGB")
         img = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
     return img
 
 
 def _pil_to_bgr(pil_img):
+    if not _PIL_AVAILABLE or Image is None:
+        raise RuntimeError("Pillow not installed. Run: pip install pillow")
     rgb = np.asarray(pil_img.convert("RGB"))
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
@@ -552,6 +562,12 @@ def vision_ocr_screenshot(browser):
     (Canvas, embedded PDFs, image-based UI) where the accessibility tree
     would have nothing to say.
     """
+    if not _CV2_AVAILABLE or cv2 is None:
+        return {"ok": False, "error": "OpenCV not available."}
+    if not _NP_AVAILABLE or np is None:
+        return {"ok": False, "error": "NumPy not available."}
+    if not _PIL_AVAILABLE or Image is None:
+        return {"ok": False, "error": "Pillow not available."}
     try:
         data = browser.screenshot()
     except Exception as exc:
@@ -565,7 +581,7 @@ def vision_ocr_screenshot(browser):
                 if val and isinstance(val, str):
                     try:
                         raw = base64.b64decode(val)
-                        img = Image.open(__import__("io").BytesIO(raw))
+                        img = Image.open(io.BytesIO(raw))
                         break
                     except Exception:
                         continue

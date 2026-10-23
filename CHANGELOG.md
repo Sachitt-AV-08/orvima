@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 2. Review new safety gate configuration
 3. Update any custom tool integrations to handle `verified` field in responses
 4. Configure environment variables for mail/WhatsApp/voice tools
-## Unreleased
+## [0.2.1] - 2026-10-23
 
 ### Added
 - vision_* module (11 tools): OCR + image recognition + video analysis, all local.
@@ -72,3 +72,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   top-level sentinel package; runs from bundled location).
 - pyproject.toml adds opencv-python-headless, pytesseract, Pillow deps.
 - All new tools carry full four-annotation hint sets.
+
+## Unreleased

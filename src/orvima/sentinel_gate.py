@@ -160,6 +160,7 @@ class SentinelGate:
         self._seen_refs: dict[tuple[str, str], str] = {}
         # Memory of human-approved actions: their signatures are auto-approved.
         self._approval_memory: set[str] = set()
+        self._override_log: list[dict] = []
         self.approval_ttl = approval_ttl
         self.stats: dict[str, int] = {
             "evaluated": 0,
@@ -169,6 +170,8 @@ class SentinelGate:
             "denied": 0,
             "degraded": 0,
             "expired": 0,
+            "override": 0,
+            "override_denied": 0,
         }
 
     # ------------------------------------------------------------------ setup
@@ -309,6 +312,7 @@ class SentinelGate:
         session_id: str = "",
         revalidate: bool = False,
         plan: str = "",
+        user_requested: bool = False,
     ) -> GateResult:
         """Decide whether `tool(**args)` may run unattended.
 
@@ -323,6 +327,11 @@ class SentinelGate:
 
         `plan` describes what the agent is trying to do, for callers that have a
         plan (Errands). It can only raise the risk, never lower it.
+
+        `user_requested` models a strong, explicit user order (Jev's
+        ``user_requested`` semantics). It can lift an outward-risk action from
+        ask→allow, but it can NEVER lift a destructive-risk denial: some
+        actions are simply not overridable.
         """
         if not self.enabled:
             return GateResult(allowed=True, risk="unknown", reason="gate disabled")
@@ -385,11 +394,58 @@ class SentinelGate:
         )
         if result.degraded:
             self.stats["degraded"] += 1
+
+        # Strong-request override: ask→allow, but never lift deny.
+        if user_requested and not result.allowed:
+            if result.risk == "destructive":
+                self.stats["override_denied"] += 1
+                self._log_override(tool, args, result.risk, allowed=False, reason="destructive risk cannot be overridden")
+                return GateResult(
+                    allowed=False,
+                    risk=result.risk,
+                    reason=f"strong user request cannot override destructive risk: {result.reason}",
+                    confidence=result.confidence,
+                    degraded=result.degraded,
+                    classifier_said=result.classifier_said,
+                )
+            self.stats["override"] += 1
+            self._log_override(tool, args, result.risk, allowed=True, reason="strong user request overrode human approval")
+            return GateResult(
+                allowed=True,
+                risk="overridden",
+                reason=f"strong user request overrode {result.risk} risk: {result.reason}",
+                confidence=1.0,
+                degraded=result.degraded,
+                classifier_said=result.classifier_said,
+            )
+
         if result.allowed:
             self.stats["auto_approved"] += 1
         else:
             self.stats["prompted"] += 1
         return result
+
+    def _log_override(
+        self,
+        tool: str,
+        args: Mapping[str, Any] | None,
+        original_risk: str,
+        allowed: bool,
+        reason: str,
+    ) -> None:
+        """Append an override audit entry. Every override is logged."""
+        import time as _time
+
+        entry = {
+            "tool": tool,
+            "args": dict(args or {}),
+            "original_risk": original_risk,
+            "allowed": allowed,
+            "reason": reason,
+            "at": _time.time(),
+        }
+        with self._lock:
+            self._override_log.append(entry)
 
     # -------------------------------------------------------------- approvals
 

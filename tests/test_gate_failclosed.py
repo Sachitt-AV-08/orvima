@@ -433,7 +433,7 @@ class TestWhatTheDocsClaim:
         """
         package = Path(__file__).resolve().parent.parent / "src" / "orvima"
         server = (package / "mcp_server.py").read_text(encoding="utf-8")
-        assert "read_only_hint=b.read_only" in server, (
+        assert "readOnlyHint=b.read_only" in server, (
             "the hint should be passed through to the SDK as metadata"
         )
         # No call site anywhere decides on it.

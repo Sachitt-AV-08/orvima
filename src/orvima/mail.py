@@ -16,6 +16,7 @@ code. Environment fallback (per-call args override):
 
 from __future__ import annotations
 
+import email
 import imaplib
 import os
 import smtplib
@@ -28,27 +29,31 @@ def _env(name: str, default: str | None = None) -> str | None:
 
 
 def _smtp_config(args: dict) -> dict:
+    # Treat explicit None as "not provided" so env defaults apply
+    use_tls = args.get("use_tls")
+    if use_tls is None:
+        use_tls = _env("ORVIMA_MAIL_USE_TLS", "1") == "1"
     return {
         "host": args.get("host") or _env("ORVIMA_MAIL_HOST") or "smtp.gmail.com",
         "port": int(args.get("port") or _env("ORVIMA_MAIL_PORT") or "587"),
         "user": args.get("user") or _env("ORVIMA_MAIL_USER") or "",
         "password": args.get("password") or _env("ORVIMA_MAIL_PASS") or "",
-        "use_tls": (args.get("use_tls")
-                    if "use_tls" in args
-                    else (_env("ORVIMA_MAIL_USE_TLS", "1") == "1")),
+        "use_tls": use_tls,
     }
 
 
 def _imap_config(args: dict) -> dict:
+    # Treat explicit None as "not provided" so env defaults apply
+    use_ssl = args.get("use_ssl")
+    if use_ssl is None:
+        use_ssl = _env("ORVIMA_MAIL_IMAP_USE_SSL", "1") == "1"
     return {
         "host": args.get("host") or _env("ORVIMA_MAIL_IMAP_HOST")
                 or _env("ORVIMA_MAIL_HOST") or "imap.gmail.com",
         "port": int(args.get("port") or _env("ORVIMA_MAIL_IMAP_PORT") or "993"),
         "user": args.get("user") or _env("ORVIMA_MAIL_USER") or "",
         "password": args.get("password") or _env("ORVIMA_MAIL_PASS") or "",
-        "use_ssl": (args.get("use_ssl")
-                    if "use_ssl" in args
-                    else (_env("ORVIMA_MAIL_IMAP_USE_SSL", "1") == "1")),
+        "use_ssl": use_ssl,
     }
 
 
@@ -60,6 +65,32 @@ def _need_creds(cfg: dict) -> dict | None:
                      "ORVIMA_MAIL_PASS (or pass user/password in the call)",
         }
     return None
+
+
+def _extract_body(msg) -> str:
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    payload = part.get_payload(decode=True)
+                    if payload is None:
+                        return (part.get_payload() or "")
+                    charset = part.get_content_charset() or "utf-8"
+                    try:
+                        return payload.decode(charset, errors="replace")
+                    except (LookupError, UnicodeError):
+                        return payload.decode("utf-8", errors="replace")
+            return ""
+        payload = msg.get_payload(decode=True)
+        if payload is None:
+            return msg.get_payload() or "" if isinstance(msg.get_payload(), str) else ""
+        charset = msg.get_content_charset() or "utf-8"
+        try:
+            return payload.decode(charset, errors="replace")
+        except (LookupError, UnicodeError):
+            return payload.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
 
 
 def mail_send(
@@ -132,6 +163,12 @@ def mail_read(
         return problem
 
     try:
+        try:
+            n = int(count)
+        except (TypeError, ValueError):
+            n = 10
+        n = max(1, n)
+
         if cfg["use_ssl"]:
             m = imaplib.IMAP4_SSL(cfg["host"], cfg["port"], timeout=30)
         else:
@@ -139,7 +176,16 @@ def mail_read(
         m.login(cfg["user"], cfg["password"])
         m.select("INBOX")
         _, data = m.search(None, "ALL")
-        uids = data[0].split()[-int(count):] if data[0] else []
+        all_uids = data[0].split() if data and data[0] else []
+        # Clamp count to available messages
+        n = min(n, len(all_uids))
+        if n <= 0:
+            uids = []
+        else:
+            uids = all_uids[-n:]
+        if not uids:
+            m.logout()
+            return {"ok": True, "messages": []}
         messages = []
         for uid in uids:
             _, fetch_data = m.fetch(uid, "(RFC822)")
@@ -147,24 +193,16 @@ def mail_read(
                 if isinstance(response_part, tuple):
                     raw = response_part[1]
                     if isinstance(raw, bytes):
-                        raw = raw.decode("utf-8", errors="replace")
-                    msg = EmailMessage()
-                    msg.set_payload(raw)
-                    body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                body = part.get_content()
-                                break
-                    else:
-                        body = msg.get_content()
-                    messages.append({
-                        "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
-                        "subject": msg.get("Subject", ""),
-                        "from": msg.get("From", ""),
-                        "date": msg.get("Date", ""),
-                        "preview": body[:300],
-                    })
+                        # Parse raw RFC822 bytes directly - preserves headers correctly
+                        msg = email.message_from_bytes(raw)
+                        body = _extract_body(msg)
+                        messages.append({
+                            "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                            "subject": str(msg.get("Subject", "") or ""),
+                            "from": str(msg.get("From", "") or ""),
+                            "date": str(msg.get("Date", "") or ""),
+                            "preview": body[:300],
+                        })
         m.logout()
         return {"ok": True, "messages": messages}
     except Exception as exc:

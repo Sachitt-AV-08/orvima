@@ -37,10 +37,10 @@ def _annotations_for(tool_name: str):
     b = tool_annotations.for_tool(tool_name)
     return ToolAnnotations(
         title=tool_name.replace("_", " "),
-        read_only_hint=b.read_only,
-        destructive_hint=b.destructive,
-        idempotent_hint=b.idempotent,
-        open_world_hint=b.open_world,
+        readOnlyHint=b.read_only,
+        destructiveHint=b.destructive,
+        idempotentHint=b.idempotent,
+        openWorldHint=b.open_world,
     )
 
 

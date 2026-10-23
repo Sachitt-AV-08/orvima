@@ -1,57 +1,32 @@
 # Orvima
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/sachitt-av-08/orvima)](https://m8ven.ai/mcp/sachitt-av-08/orvima?s=readme)
-[![Orvima on AI Agents Listing](https://aiagentslisting.com/orvima/badge.svg?claim=561a5016138cf5b244db958c4849711d)](https://aiagentslisting.com/mcp/orvima)
+One AI tool gets eyes and hands on the web - on your machine. Open-source, local-first browser automation MCP server: 60 tools across 9 domains, a Sentinel safety gate, local OCR/vision, Edge TTS voice, and CDP real-profile attach. Runs at `127.0.0.1`.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Version 0.2.1](https://img.shields.io/badge/version-0.2.1-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml/badge.svg)](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/Sachitt-AV-08/orvima)](https://github.com/Sachitt-AV-08/orvima/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Your browser, driven by any AI — with a live viewport you control.**
+## Why Orvima
 
-Orvima is a self-hosted, local-first agent that gives any MCP-capable AI tool (Claude, Cursor, Copilot, your own agent) 49 tools across 8 domains - **browser, mail, WhatsApp, voice, media, math, science, and a safety gate** - all running on your own machine against your own browser, your own logins, and your own data. Navigate, click, type, extract, verify, send email, message on WhatsApp, speak with a distinctive voice, fetch YouTube transcripts, solve equations, convert units, and classify risk - all while you watch every step in a live viewport and stop it whenever you like.
+- **Live viewport** - frames stream to a local dashboard (`http://127.0.0.1:8301`) you can watch.
+- **Human-in-the-loop** - pause/resume always; an optional fail-closed Sentinel gate holds risky actions.
+- **Verified steps** - every mutating action confirms the DOM result before the agent proceeds.
+- **Local-first** - cookies, sessions, and scrapes stay on your machine. Loopback only by default.
+- **Any brain** - Claude, Cursor, Copilot, or any OpenAI-compatible model including local Ollama.
 
+## Quick start
+
+Install from source (verified against a clean checkout):
+
+```bash
+git clone https://github.com/Sachitt-AV-08/orvima.git
+cd orvima
+python -m pip install -e ".[mcp]"
+orvima doctor
 ```
-  any AI tool            MCP / stdio            +--------------------+
-  (Claude, Copilot,         │                   |  Orvima (localhost) |
-   Cursor, your agent)      └────browse_*──────▶|   YOUR browser with |
-                                                 |   your logins       |
-                                                 |   live viewport     |
-                                                 |   pause / approve   |
-                                                 +--------------------+
-```
 
-No cloud, no API key to try it, no account. Install it, point your AI at it, done.
-
-## 49 tools across 8 domains
-
-| Domain | Tools | What they do |
-|--------|-------|-------------|
-| **browser** | 22 | Navigate, click, type, fill, select, scroll, snapshot, screenshot, extract, eval, tabs, wait, download, set files |
-| **mail** | 2 | Send email (SMTP), read inbox (IMAP) |
-| **whatsapp** | 5 | Status, list chats, read messages, send, react (via parley/WhatsApp Desktop) |
-| **voice** | 4 | Speak (Edge TTS + Ultron modulation), listen (Whisper STT), set/list styles |
-| **media** | 4 | YouTube transcript, YouTube search, music search, music play |
-| **compute** | 7 | Math solve/simplify/derivative/integral/plot, unit convert, science constants |
-| **gate** | 3 | Risk classify, describe action, check risk concepts (sentinel-backed) |
-| **router** | 2 | List recipes, route goal to reviewed recipe or refuse (errands-backed) |
-
-All tools are plain dict-in, dict-out over one contract. Credentials come from environment variables, never hardcoded. Everything runs on 127.0.0.1.
-
----
-
-## Why Orvima — the three things that actually matter
-
-| | |
-|---|---|
-| **Live viewport** | See exactly what the agent sees — frames stream in real time via SSE. |
-| **Human-in-the-loop** | Pause or resume a run at any time. An optional fail-closed approval gate holds risky actions for a human - see [Approvals](#approvals). |
-| **Verified steps** | Every action confirms the DOM result (`snapshot`) before the agent proceeds — no silent failures, no guessed success. |
-
-Local-first. Everything runs at `127.0.0.1`. Your cookies, sessions and scrapes never leave your computer. Bring your own brain: plug in any OpenAI-compatible model (OpenAI, OpenRouter, Groq, local Ollama), or use your MCP client (Claude, Cursor, Copilot) as the brain.
-
----
-
-## Quick start (30 seconds)
+One-line installers are also provided:
 
 ```bash
 # Windows (PowerShell)
@@ -61,18 +36,34 @@ irm https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.ps1 | ie
 curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/orvima/main/install.sh | sh
 ```
 
-**Against a real browser — your own Chrome, Edge or Brave. The default, so there is no flag to get wrong:**
+Try it with no browser, no internet, and no keys:
 
 ```bash
-orvima serve                       # local dashboard + API at http://127.0.0.1:8301
-orvima run "summarize the top story on hacker news"
+orvima run "send a message to Acme support" --mode demo
 ```
 
-`orvima serve` puts a control dashboard at `http://127.0.0.1:8301` — watch every step stream into a live viewport, pause or resume a run, and approve held actions. `orvima run` launches a browser you own, with a persistent profile so your logins survive restarts. Autonomous runs need a brain — set `ORVIMA_LLM_BASE` and `ORVIMA_LLM_KEY` (any OpenAI-compatible endpoint, including local Ollama) — or just drive it through MCP and let your assistant be the brain.
+Drive your own browser:
 
-**Plug your AI into it (MCP):**
+```bash
+orvima serve                 # dashboard + API at http://127.0.0.1:8301
+orvima mcp                   # stdio MCP server for any AI tool
+```
 
-Copy the exact config for your client:
+Attach to a browser you already have running (CDP):
+
+```bash
+orvima --attach http://127.0.0.1:9222 mcp
+```
+
+Autonomous runs need a brain - any OpenAI-compatible endpoint:
+
+```bash
+export ORVIMA_LLM_BASE=http://localhost:11434/v1   # or https://api.openai.com/v1
+export ORVIMA_LLM_KEY=sk-...
+export ORVIMA_LLM_MODEL=llama3.1                     # default gpt-4o-mini
+```
+
+## MCP client configuration
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 
@@ -88,13 +79,13 @@ Copy the exact config for your client:
 }
 ```
 
-**Claude Code** (add to your project or global config):
+**Claude Code:**
 
 ```bash
 claude mcp add orvima orvima mcp
 ```
 
-**Cursor** (`.cursor/mcp.json` in your project root):
+**Cursor** (`.cursor/mcp.json`):
 
 ```json
 {
@@ -124,242 +115,173 @@ claude mcp add orvima orvima mcp
 }
 ```
 
-These configs start a real browser — that is the default, so there is no `--mode` flag to get wrong. Add `--mode demo` if you specifically want the offline simulator.
+To run against the offline simulator instead of a real browser, add `"--mode", "demo"` to `args`.
 
-Then just tell your assistant things like
-*"open the top hacker news story and summarize the comments"*.
-It will `browse_navigate`, `browse_snapshot`, and report back — verified, not guessed.
+## Feature categories (60 MCP tools)
 
-**The real browser (this is the default):**
+| Category | Count | Highlights |
+|----------|-------|------------|
+| browse | 22 | navigation, click, hover, type, fill, select, press, scroll, snapshot, screenshot, extract, eval (audited), tabs, download, set files |
+| mail | 2 | `mail_send`, `mail_read` via SMTP/IMAP |
+| whatsapp | 5 | status, list chats, read, send, react (via WhatsApp Desktop/parley) |
+| voice | 4 | `voice_say` (Edge TTS + Ultron modulation), `voice_listen` (Whisper STT), styles |
+| media | 4 | YouTube transcript, YouTube search, music search, music play |
+| compute | 7 | math solve/simplify/derivative/integral/plot data, unit conversion, science constants |
+| gate | 3 | classify risk, describe action, risk concepts (Sentinel-backed) |
+| router | 2 | list recipes, route a goal to a reviewed recipe or refuse |
+| vision | 11 | OCR, region OCR, find text, image description, template match, face detection (boxes only), video frames, video OCR, scene changes, multi-pass OCR, browser-screenshot OCR |
 
-Orvima launches **your installed Chrome, MS Edge or Brave** — visible, with a persistent profile at `~/.orvima/profile`, so your logins survive restarts. Your everyday profile is never touched. Want it to drive the browser you already have open?
+All tools are plain dict-in/dict-out. Credentials come from arguments or environment variables, never hardcoded.
 
-```bash
-orvima serve                                            # watch it work at :8301
-orvima run "compare prices on two flights"               # autonomous, needs a brain
-```
+## Browser tool reference
 
-For autonomous `orvima run`, give it a brain — any OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, or **local Ollama**):
-
-```bash
-export ORVIMA_LLM_BASE=http://localhost:11434/v1   # or https://api.openai.com/v1
-export ORVIMA_LLM_KEY=sk-…                          # ORVIMA_LLM_MODEL=llama3.1 (default gpt-4o-mini)
-```
-
-Attach to a browser you already have running (parley-style, over CDP):
-
-```bash
-orvima --attach http://127.0.0.1:9222 mcp
-```
-
-Start that browser with `--remote-debugging-port=<port>` to expose the endpoint.
-
-**Against a browser you actually use every day, add `--attach-tab`.** Chromium's
-browser-level `connect_over_cdp` enumerates and auto-attaches to *every* target
-before the handshake completes, so a profile with extension service workers,
-reCAPTCHA iframes and a dozen open tabs can stall it indefinitely — we measured
-one still hanging at 90s with no other client attached. Naming a single tab skips
-that enumeration and returns in milliseconds:
-
-```bash
-export ORVIMA_ATTACH_TAB=linkedin.com    # substring of the tab url or title
-orvima --attach http://127.0.0.1:9335 mcp
-```
-
-If the endpoint answers but the handshake still stalls, attach fails fast rather
-than hanging — `ORVIMA_ATTACH_TIMEOUT` (default 10s) bounds the wait, and
-`ORVIMA_TYPE_DELAY_MS` (default 0) sets per-character typing delay.
-
-`--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps` are global flags — they work with any subcommand.
-
-> `--mode demo` = offline simulator, opt-in. Perfect for CI and tours.
-> no flag = your own installed browser, streaming frames to the dashboard (the default)
-> flags: `--browser {chrome,msedge,brave,chromium}`, `--attach <cdp-url>`, `--headless`, `--max-steps`
-
-**No browser, no internet, no keys? Try the offline tour instead:**
-
-```bash
-orvima run "send a message to Acme support" --mode demo
-```
-
-That goal gets planned and executed step by step against Orvima's built-in simulator — the same `browse_*` tools, the same verify-every-step loop, nothing installed except orvima itself. Add `--mode demo` anywhere to stay there.
-
----
-
-## Orvima vs. the alternatives
-
-| | Orvima | Playwright MCP | Chrome DevTools MCP | browser-use |
-|---|---|---|---|---|
-| **Live viewport** | ✅ SSE stream | ❌ | ❌ | ❌ |
-| **Human approval** | pause/resume always; optional fail-closed gate holds risky actions | ? | ? | ? |
-| **Verified steps** | ✅ DOM-confirmed | ❌ | ❌ | ❌ |
-| **Your logins / your profile** | ✅ persistent | ❌ fresh | ✅ your profile | ❌ fresh |
-| **Local-first / loopback only** | ✅ | ✅ | ✅ | ✅ |
-| **MCP stdio** | ✅ | ✅ | ✅ | ❌ |
-| **Any OpenAI-compatible brain** | ✅ | ❌ | ❌ | ✅ |
-| **Offline demo / CI** | ✅ | ❌ | ❌ | ❌ |
-| **Self-hosted, MIT** | ✅ | ✅ | ✅ | ✅ |
-
-*Comparison based on verifiable features: live viewport, human-in-the-loop controls, DOM-verified actions, and profile persistence. "brain" flexibility refers to supporting any OpenAI-compatible endpoint vs. vendor-locked models.*
-
----
-
-## The tools
-
-| tool | does |
-| --- | --- |
+| Tool | Does |
+|------|------|
 | `browse_navigate(url)` | open a URL and wait for it to be interactive |
-| `browse_click(selector)` | click the first element matching a selector |
-| `browse_hover(selector)` | hover (reveals menus, tooltips) |
-| `browse_type(selector, text)` | type into a field character by character |
-| `browse_fill(selector, text)` | replace a field's value wholesale |
-| `browse_select(selector, value)` | pick an option in a dropdown |
-| `browse_press(key)` | press Enter / Escape / Tab / … |
-| `browse_go_back()` | one page back |
-| `browse_wait(ms)` | breathe (after submits, before verifying) |
-| `browse_wait_for(selector)` | wait until an element exists |
-| `browse_scroll(direction)` | down / up |
-| `browse_snapshot()` | the compact DOM outline agents plan from |
-| `browse_extract(selector)` | pull text out of one element |
-| `browse_screenshot()` | base64 PNG of the live viewport |
-| `browse_eval(expression, reason)` | run a JS expression - an escape hatch, not a sandbox. Refuses expressions that look irreversible, and reports `mutating` measured from a before/after DOM signature |
-| `browse_eval_audit()` | every `browse_eval` this session: expression, reason, effect |
-| `browse_download(selector)` | click something that downloads a file and save it locally; fails explicitly when no download starts |
-| `browse_set_files(paths, selector)` | attach files to an `<input type=file>`, and report what the page's own FileList ended up holding |
-| `browse_open_tab(url)` / `browse_list_tabs()` | multi-tab research |
-| `browse_switch_tab(index)` / `browse_close_tab(index)` | move between / close tabs |
+| `browse_click(selector)` / `browse_hover(selector)` | click / hover |
+| `browse_type` / `browse_fill` / `browse_select` / `browse_press` | input fields, dropdowns, keys |
+| `browse_go_back()` / `browse_wait(ms)` / `browse_wait_for(selector)` / `browse_scroll` | navigation and timing |
+| `browse_snapshot()` / `browse_extract(selector)` / `browse_screenshot()` | read page |
+| `browse_eval(expression, reason)` / `browse_eval_audit()` | audited JS escape hatch (not a sandbox) |
+| `browse_download(selector)` / `browse_set_files(paths, selector)` | downloads and file attachment |
+| `browse_open_tab` / `browse_list_tabs` / `browse_switch_tab` / `browse_close_tab` | multi-tab |
 
-`browse_click` and `browse_navigate` also take optional expectations - `expect_url`, `expect_text`, `expect_count` (+ `expect_for`). They are polled for up to `expect_timeout_ms`, because the result of a click is often asynchronous, and an unmet expectation is a **hard error naming every mismatch** rather than a `verified: false` you can ignore. Omit them and behaviour is exactly as before, with no extra keys in the result.
+Mutating tools return `{"ok": true, ...}` with a `verified` flag. Read tools return `ok: true` without `verified`. `browse_eval` returns `mutating` instead. `browse_click` and `browse_navigate` accept optional `expect_url`, `expect_text`, `expect_count` (+ `expect_for`) polled up to `expect_timeout_ms`; an unmet expectation is a hard error.
 
-Every mutating tool (`browse_click`, `browse_type`, `browse_fill`, `browse_select`, `browse_press`, `browse_navigate`, `browse_go_back`, `browse_wait_for`, `browse_open_tab`, `browse_switch_tab`, `browse_close_tab`, `browse_download`, `browse_set_files`) returns `{"ok": true, ...}` with a `verified` flag after the page has confirmed the result. Read tools (`browse_snapshot`, `browse_screenshot`, `browse_extract`, `browse_eval_audit`, `browse_hover`, `browse_wait`, `browse_scroll`, `browse_go_back`, `browse_list_tabs`) return `ok: true` without a `verified` field. `browse_eval` returns `mutating` rather than `verified`, because "did anything change" is the wrong question for arbitrary JS.
+## Architecture overview
 
-**What `browse_eval` does not do.** It is not a sandbox. The guard matches destructive API names and guard words in the source text, so an expression that achieves the same effect another way will run. It raises the cost of a mistake; it does not make one impossible. Every call is recorded in the audit trail with the reason you stated, and the point of the audit is that you can read afterwards exactly what ran on a logged-in page.
+| File | Role |
+|------|------|
+| `src/orvima/mcp_server.py` | MCP stdio server binding all 60 tools |
+| `src/orvima/tools.py` | `browse_*` tools as dict-in/dict-out functions |
+| `src/orvima/browser.py` | real browser controller (persistent profile or CDP attach) |
+| `src/orvima/cdp.py` | page-level CDP client attaching to a single open tab's socket |
+| `src/orvima/demo.py` | offline simulator with the same tool surface |
+| `src/orvima/planner.py` | adaptive step planner (`LLMPlanner` any OpenAI endpoint + `DemoPlanner`) |
+| `src/orvima/agent.py` | sessions, event bus, and agent loop (snapshot -> decide -> act -> verify) |
+| `src/orvima/api.py` | FastAPI app + SSE events; serves dashboard at `/` |
+| `src/orvima/dashboard.py` | self-served control dashboard (no framework/CDN) |
+| `src/orvima/cli.py` | `demo`, `serve`, `mcp`, `run`, `bench`, `doctor` |
+| `src/orvima/sentinel_gate.py` + `src/orvima/sentinel/` | safety gate: risk classification, approval memory, override |
+| `src/orvima/vision.py` | local OCR, image matching/description, video analysis |
+| `src/orvima/compute.py` / `media.py` / `mail.py` / `whatsapp.py` / `voice.py` | domain modules |
+| `src/orvima/errands/` (core/recipes/router) | goal-to-reviewed-recipe router, used by `router` tools |
+| `src/orvima/voice.py` | Edge TTS + Ultron modulation (pitch shift, reverb, metallic EQ) + Whisper STT |
 
-Refs from a snapshot work anywhere, including inside frames (`f2:e3`), and survive re-render: a ref is a remembered *identity*, not a position. If the original element is gone, Orvima looks for a substitute and **refuses rather than guessing** when two candidates are equally good.
+Everything runs on `127.0.0.1`; no cloud dependency for core operation.
 
----
+## Safety gate (Sentinel)
 
-## How it's built
+Sentinel is an **optional** package and is not a declared dependency. When it is missing or broken the gate is **fail-closed**: no action can be judged, so no action is auto-approved. Modes:
 
-| piece | what |
-| --- | --- |
-| `src/orvima/browser.py` | `BrowserController` — your Chrome/Edge/Brave (persistent profile or CDP attach) with verify-first ops |
-| `src/orvima/cdp.py` | page-level CDP client — attaches to a single open tab's own socket, skipping the browser handshake that stalls on busy profiles |
-| `src/orvima/demo.py` | `DemoBrowser` — the same surface, scripted, offline, CI-friendly |
-| `src/orvima/tools.py` | the `browse_*` tools as plain dict-in/dict-out functions |
-| `src/orvima/planner.py` | adaptive step-planner: `LLMPlanner` (any OpenAI-compatible endpoint) + `DemoPlanner` |
-| `src/orvima/agent.py` | sessions, the event bus, and the agent loop (snapshot → decide → act → verify) |
-| `src/orvima/api.py` | FastAPI app + SSE events (live frames, transcript, controls); serves the dashboard at `/` and the owner page at `/owner` |
-| `src/orvima/dashboard.py` | the control dashboard — one self-served HTML file, no framework, no CDN |
-| `src/orvima/owner.py` | the passphrase-gated owner analytics page + `collect_analytics()` |
-| `src/orvima/mcp_server.py` | MCP (stdio) binding so any AI tool can drive it |
-| `src/orvima/cli.py` | argparse CLI with demo/serve/mcp/run/doctor |
+| How you run it | What happens |
+|----------------|--------------|
+| `orvima run` (CLI) | fully unattended; no gate constructed |
+| `orvima serve`, Sentinel not installed | every action waits for a human (including reads) |
+| `orvima serve`, Sentinel installed | only flagged actions are held for a human verdict |
+| `ORVIMA_SENTINEL=off` | fully unattended, deliberately; reported as `gate: "off"` |
 
-## Roadmap
+Check state:
 
-- [x] Core agent: 49 MCP tools across 8 domains (browse, mail, whatsapp, voice, media, compute, gate, router)
-- [x] Voice: Edge TTS + Ultron modulation (pitch shift, reverb, metallic EQ) + Whisper STT
-- [x] Safety gate: sentinel risk classifier (concept matching + embedding)
-- [x] Goal router: errands recipe matching (goal -> reviewed recipe or refuse)
-- [x] Drives **your** installed Chrome/Edge/Brave (persistent profile) or attaches to a running browser over CDP
-- [x] Adaptive step-planner (snapshot → decide → act) with LLM / local-Ollama / MCP brains
-- [x] Classified recovery: transient failures get a second turn, irreversible ones never do
-- [x] Refs are element identities, not positions - they survive re-render and refuse on ambiguity
-- [x] Iframes and shadow roots are traversed, and unreachable frames are named rather than dropped
-- [x] Intent-level verification (`expect_url` / `expect_text` / `expect_count`)
-- [x] Bounded planner context - a 50-step run is ~3.8k tokens of prompt, not ~71k
-- [x] Downloads, file attachment, and an audited `browse_eval`
-- [x] Offline demo mode (runs anywhere, powers CI)
-- [x] MCP server (works with mcp SDK v1 *and* v2)
-- [x] HTTP API + live SSE stream (frames + transcript, pause/resume)
-- [x] CI + test suite (782 tests with a 75% line-coverage gate; demo-mode tests need no browser; real-browser tests skip cleanly when no Chromium is present)
-- [x] One-line installers (`irm … | iex` / `curl … | sh`)
-- [x] Dashboard UI at `http://127.0.0.1:8301` — live viewport, pause/resume/cancel, approvals queue, owner analytics page (passphrase-gated)
-- [ ] Media playback (file downloads are done: `browse_download`)
-- [ ] Cross-platform browser detection (macOS/Linux Chrome/Edge paths)
+```bash
+curl -s localhost:8301/api/gate/stats
+# {"gate":"degraded","available":false,...}  <- nothing is being judged
+# {"gate":"on","available":true,...}          <- judging is in force
+# {"gate":"off",...}                         <- deliberately unattended
+```
+
+Key mechanisms:
+
+- **Local, no LLM, no network on the decision path.** Default `classifier_mode=off` decides in ~0.1 ms via pure string matching.
+- **Fail closed, loudly.** A throwing classifier, missing policy, or timeout returns `allowed: false` with `degraded: true` - a classifier bug never becomes permission.
+- **Approval memory.** After a human approves an action, its exact signature (tool + selector/ref/url/value/text) is stored and matching actions are auto-approved without re-running the classifier. Approving "place your order" does not auto-approve "delete account".
+- **Strong-request override.** An explicit user request can lift an outward-risk hold to allow, but can never override a destructive-risk denial.
+- **Revalidation.** A queued approval can expire while the page changes; the gate rechecks that the referenced element has not moved and the risk has not increased before honouring it (`approval_ttl` default 300 s).
+- **Auditable.** Every decision (risk, reason, classifier output) lands in the session transcript; overrides are appended to an override log.
+
+The gate is a classifier plus a word list - it is wrong in both directions. It reduces reading load; it does not replace judgement.
 
 ## Approvals
 
-Whether an action waits for you depends on how you started orvima and what is
-installed. This is worth stating plainly, because the three cases behave very
-differently and the failure mode in the second one looks like a broken install.
+The three run modes and what they mean for approvals:
 
-| How you run it | What actually happens |
-|----------------|-----------------------|
-| `orvima run` (CLI) | **Fully unattended.** No gate is constructed; every action runs without being judged |
-| `orvima serve` (HTTP API), `sentinel` not installed | **Every action waits for you**, including reads like `browse_snapshot`. Nothing can be judged, so nothing is auto-approved |
-| `orvima serve` with `sentinel` installed | Only actions the gate flags are held for a human verdict |
-| `ORVIMA_SENTINEL=off` | **Fully unattended**, deliberately. Reported as `gate: "off"` at `/api/gate/stats` |
+| Mode | Command | Gate status | Behaviour |
+|------|---------|-------------|-----------|
+| CLI unattended | `orvima run "goal"` | **none** (no gate constructed) | Every action runs without approval. No pauses, no gate. |
+| API serve (Sentinel missing) | `orvima serve` | **degraded** (fail-closed) | Every action is refused until a human approves via the dashboard or `/api/gate/approve`. |
+| API serve (Sentinel installed) | `orvima serve` | **on** | Only flagged actions wait for approval; reads and safe actions proceed. |
+| Explicit off | `ORVIMA_SENTINEL=off orvima serve` | **off** | Every action runs without approval. Deliberate escape hatch. |
 
-`sentinel` is an optional package and is **not** a declared dependency - not even
-an extra. So the second row is what a fresh install from the GitHub Release
-gives you (the `sentinel` extra is not pulled in): an API that holds every
-action for approval because there is no classifier to judge it. That is the
-fail-closed default working, and the refusal message tells you both ways out -
-install `sentinel`, or set `ORVIMA_SENTINEL=off` and accept that nothing is
-being checked.
-
-Check what you have:
+Check the current mode at any time:
 
 ```bash
-curl -s localhost:8000/api/gate/stats
-# {"gate": "degraded", "available": false, ...}   <- nothing is being judged
-# {"gate": "on", "available": true, ...}          <- judging is in force
-# {"gate": "off", ...}                            <- deliberately unattended
+curl -s localhost:8301/api/gate/stats
+# {"gate":"on","available":true,...}       <- judging is in force
+# {"gate":"degraded","available":false,...} <- nothing is being judged, fail-closed
+# {"gate":"off",...}                       <- deliberately unattended
 ```
 
-`on`, `degraded` and `off` are kept distinct on purpose. "A human switched this
-off" and "the gate failed to load" call for opposite responses, and collapsing
-them is how a malfunction quietly becomes a policy.
+If a session appears stuck, check `/api/gate/stats` first. A `degraded` gate means Sentinel is not installed or failed to load - install it or set `ORVIMA_SENTINEL=off` if you intentionally want no gate.
 
-What the gate is not: it is a classifier plus a word list, and it is wrong in
-both directions. A genuinely dangerous action behind an innocuously-worded button
-may pass; a harmless action may prompt. It reduces how much you have to read
-carefully. It does not replace judgement.
+## Vision module
 
-## Security
+All vision operations are local-first: Tesseract 5.x for OCR, OpenCV for image/video processing, Pillow for image I/O. No API keys, no network calls.
 
-Orvima is **loopback-only by default** and stores nothing of yours remotely. It is a tool for *your* browser and *your* accounts: only run it on machines you trust, and never expose the API port publicly. Real-mode sessions use your real browser profile — an agent can act as you on the websites *you* are already logged into, in a browser **you can physically watch**. Pause it (`browse_control` / the UI), read the transcript, and let it do one thing at a time.
+- **OCR**: grayscale, denoise, unsharp-mask, Otsu threshold, deskew, then multi-source x multi-PSM passes; best-confidence result wins. Low-confidence output is flagged.
+- **Region OCR** reads one rectangle (price badge, button label) instead of the whole page.
+- **Text find** reports whether a query appears and where.
+- **Image describe** returns dimensions, dominant colors, and edge density.
+- **Template match** locates a template image inside a page and returns center coords.
+- **Face detection** returns count + bounding boxes only. No identity, no recognition, no image data uploaded.
+- **Video**: adaptive frame sampling; OCR per sampled frame; scene changes via inter-frame pixel diff.
+- **Multi-pass OCR** tries 4 rotations x 3 modes and reports which orientation read best - use as a last resort for sideways screenshots.
+- **Browser-screenshot OCR**: screenshots the bound browser's current page and OCRs it in one call (`vision_ocr_screenshot`).
 
-## Known limits
+Dependencies: Tesseract binary is auto-detected from PATH and common install dirs. If missing, every tool returns a clear `not available` message rather than making the server fail to load. Install via `winget install tesseract-ocr.tesseract` on Windows or your package manager elsewhere.
 
-| Area | Status | Notes |
-|------|--------|-------|
-| CAPTCHAs / 2FA | ❌ Not supported | Human takeover (pause/resume) is the intended workflow |
-| File dialogs | ❌ Not supported | Human takeover required |
-| Browser updates | may break selectors | Fixture tests catch regressions; update fixtures when needed |
-| CAPTCHAs on login | not solvable | Pause, solve manually, resume |
-| Media playback | not supported | On roadmap. File *downloads* are supported via `browse_download` |
-| Unreachable frames | partial | Same-origin iframes and shadow roots are traversed and get frame-scoped refs (`f2:e3`). A frame Chromium cannot read is listed in `notTraversed` with its src and the reason rather than silently missing |
+## CLI reference
 
-These are honest constraints — not bugs. Orvima is designed for human-in-the-loop automation where the human handles the hard edge cases.
+```text
+orvima [--browser {chrome,msedge,brave,chromium}] [--attach CDP_URL] [--headless] {demo,serve,mcp,run,bench,doctor}
+```
 
-## Hire me — MCP browser setup & integration
+- `orvima demo` - offline tour.
+- `orvima serve` - local API + UI at `http://127.0.0.1:8301`.
+- `orvima mcp` - stdio MCP server (`--mode {demo,real}`).
+- `orvima run "goal"` - headless agent loop (`--mode`, `--max-steps`).
+- `orvima bench` - measure agent-loop task pass rate (no browser).
+- `orvima doctor` - health check for browser, profile, port, LLM, MCP.
 
-Orvima is free to self-host, but wiring it into your stack takes time. I'll do it for you.
+Global flags work with any subcommand. `--headless` is CI/pod-friendly. `ORVIMA_ATTACH_TAB` names a single browser tab to avoid CDP handshake stalls on busy profiles.
 
-**Flat-scope, 48-hour tasks:**
-- Wrap your API as an MCP server (stdio or SSE) — auth, retries, pagination
-- Fix a flaky MCP server — timeouts, selector drift, auth expiry
-- Browser automation script — login, scrape, form-fill, data extraction on your own Chrome/Edge/Brave
-- Orvima setup on your machine — install, MCP client config (Claude/Cursor/Copilot), LLM brain connected
-- Custom recipe + Sentinel-style gate — classify `browse_click` as destructive vs safe, hold payment steps for a human
+## Contributing
 
-**Pricing (INR, paid by UPI):**
-- One task — ₹3,000 flat (₹1,500 to start, ₹1,500 when you've seen it run)
-- Hourly — ₹2,500/hr
-- Retainer — ₹40,000/month (~4–5 hrs/week, cancel anytime)
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Contact: [sachittav@gmail.com](mailto:sachittav@gmail.com) — or reply on GitHub with one sentence about what you want automated.
+```bash
+git clone https://github.com/Sachitt-AV-08/orvima.git
+cd orvima
+python -m pip install -e ".[dev,mcp]"
 
-*Note: I'm under 18. A parent or guardian should be the contracting party so the agreement holds. The tech is mine; the paperwork is theirs.*
+# Quality checks
+ruff format .
+ruff check .
+pytest                                    # coverage gate: 75% line
+```
 
----
+- Python 3.10+ (3.11 preferred).
+- Type hints and docstrings for public functions.
+- New MCP tool: create it under `src/orvima/`, register in the module tool list, add tests in `tests/`, document in `docs/api.md`.
+
+Report bugs and feature requests via GitHub Issues. Include reproduction steps, environment details (OS, Python, browser), and logs.
 
 ## License
 
-MIT. Free forever. Self-host it, fork it, run it on your own boxes.
+MIT. Free forever. Self-host it, fork it, run it on your own boxes. See [LICENSE](LICENSE).
 
----
+## Documentation
 
-Made with care — and a browser that keeps its eyes on the page.
+- [API Reference (MCP Tools)](docs/api.md)
+- [Launch Announcements](docs/launch.md)
+- [Security Policy](SECURITY.md)
+- [Disclaimer](DISCLAIMER.md)

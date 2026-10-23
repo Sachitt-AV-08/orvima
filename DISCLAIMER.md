@@ -1,4 +1,6 @@
-﻿# Disclaimer
+﻿# Orvima Disclaimer — AI Agent Browser Automation Liability
+
+> **Meta description:** Disclaimer for Orvima, an open-source local-first browser automation MCP server: no warranty, user responsibility for approved actions, and Sentinel approval gate limits.
 
 Orvima, Sentinel, and the related browser automation tools are provided
 "as is", without warranty of any kind, express or implied. The maintainer
@@ -13,3 +15,9 @@ outcome. The gate is a guardrail, not a sandbox or guarantee of safety.
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software under the MIT license (see LICENSE).
+
+## Related Documentation
+
+- [README](README.md)
+- [Security Policy](SECURITY.md)
+- [API Reference](docs/api.md)

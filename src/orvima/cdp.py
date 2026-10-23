@@ -245,9 +245,8 @@ class CDPPage:
         self.wait_ready(timeout=timeout or self._timeout)
         return self.url()
 
-    def eval(self, expression: str, await_promise: bool = False):
-        """Evaluate a JS expression and return its value."""
-        res = self.socket.call(
+    def _evaluate_once(self, expression: str, await_promise: bool = False) -> dict:
+        return self.socket.call(
             "Runtime.evaluate",
             {
                 "expression": expression,
@@ -256,11 +255,84 @@ class CDPPage:
                 "userGesture": True,
             },
         )
+
+    @staticmethod
+    def _raise_on_exception(res: dict) -> None:
         if res.get("exceptionDetails"):
             detail = res["exceptionDetails"]
             text = (detail.get("exception") or {}).get("description") or detail.get("text", "")
             raise CDPError(f"JS threw: {text}")
-        return res.get("result", {}).get("value")
+
+    def eval(self, expression: str, await_promise: bool = False):
+        """Evaluate a JS expression and return its value.
+
+        Arrow functions / function expressions evaluate to a *function object*,
+        which CDP cannot serialize by value (returns {}). Detect that case and
+        re-evaluate as an IIFE so the callable is actually invoked.
+        """
+        res = self._evaluate_once(expression, await_promise)
+        self._raise_on_exception(res)
+        result = res.get("result", {})
+        if result.get("type") == "function":
+            wrapped = f"({expression})()"
+            res = self._evaluate_once(wrapped, await_promise)
+            self._raise_on_exception(res)
+            result = res.get("result", {})
+        return result.get("value")
+
+    def text(self) -> str:
+        """Exact visible page text — fast, no OCR, no screenshots."""
+        return self.eval("document.body.innerText") or ""
+
+    def query(self, selector: str, root: str | None = None) -> dict | None:
+        """First element matching *selector*, walking into open shadow roots."""
+        matches = self.query_all(selector, root)
+        return matches[0] if matches else None
+
+    def query_all(self, selector: str, root: str | None = None) -> list[dict]:
+        """All elements matching *selector*, recursing into open shadow roots.
+
+        Returns serializable dicts: {tag, text, href, id, class}. No CDP
+        nodeIds are needed — the JS walker pierces open shadow roots and the
+        result is plain JSON, so ``returnByValue`` works.
+
+        Results are deduplicated by ``(tag, href)`` so shadow-root + light-DOM
+        double-walking doesn't return the same element twice.
+        """
+        import json as _json
+
+        root_setup = ""
+        if root is None:
+            root_setup = "const root = document.documentElement;"
+        else:
+            root_setup = (
+                f"const root = document.querySelector({_json.dumps(root)});"
+                " if (!root) return [];"
+            )
+        expr = (
+            "(() => {"
+            + root_setup
+            + " const sel = " + _json.dumps(selector) + ";"
+            + " const seen = new Set();"
+            + " const out = [];"
+            + " const walk = (node) => {"
+            "   if (!node || node.nodeType !== 1) return;"
+            "   for (const el of node.querySelectorAll(sel)) {"
+            "     const key = (el.tagName + '|' + (el.getAttribute('href') || ''));"
+            "     if (seen.has(key)) continue;"
+            "     seen.add(key);"
+            "     out.push({tag: el.tagName, text: el.textContent || '',"
+            "              href: el.getAttribute('href') || '',"
+            "              id: el.id || '', class: el.className || ''});"
+            "   }"
+            "   if (node.shadowRoot) walk(node.shadowRoot);"
+            "   for (const child of node.children) walk(child);"
+            " };"
+            " walk(root);"
+            " return out;"
+            "})()"
+        )
+        return self.eval(expr) or []
 
     def url(self) -> str:
         return self.eval("location.href") or ""

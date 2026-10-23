@@ -85,10 +85,11 @@ def test_the_server_actually_passes_annotations_to_the_sdk() -> None:
 
     ann = mcp_server._annotations_for("browse_click")
     assert ann is not None, "_annotations_for returned None on an SDK that supports them"
-    assert ann.destructive_hint is True
-    assert ann.read_only_hint is False
+    # ToolAnnotations uses camelCase attributes (readOnlyHint, destructiveHint, etc.)
+    assert ann.destructiveHint is True
+    assert ann.readOnlyHint is False
 
-    assert mcp_server._annotations_for("browse_snapshot").read_only_hint is True
+    assert mcp_server._annotations_for("browse_snapshot").readOnlyHint is True
 
 
 def _advertised(server) -> dict:

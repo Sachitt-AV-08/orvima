@@ -9,8 +9,10 @@ STT uses Whisper (local, free) when available, falling back to a clear error.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
+import threading
 
 import numpy as np
 
@@ -98,6 +100,71 @@ async def _edge_tts_generate(text: str, voice: str, rate: str) -> bytes:
     return audio_data
 
 
+def _threaded_if_running_loop(func):
+    """Run a (blocking) function in a worker thread when an event loop is active.
+
+    The MCP runtime drives synchronous tools inside its async event loop.
+    Heavy or blocking work such as TTS, audio playback, recording, or STT
+    must not stall that loop, so offload the whole call to a fresh thread.
+    Outside an event loop the function runs in place, preserving the normal,
+    testable call path.
+    """
+
+    def wrapper(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return func(*args, **kwargs)
+
+        box: dict = {}
+
+        def _worker() -> None:
+            try:
+                box["result"] = func(*args, **kwargs)
+            except Exception as exc:  # noqa: BLE001 - re-raised below
+                box["error"] = exc
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        thread.join()
+        if "error" in box:
+            raise box["error"]
+        return box["result"]
+
+    wrapper.__name__ = getattr(func, "__name__", wrapper.__name__)
+    wrapper.__doc__ = func.__doc__
+    return wrapper
+
+
+def _generate_audio_bytes(text: str, voice: str, rate: str) -> bytes:
+    """Run Edge TTS to completion, even when called inside a running event loop.
+
+    Edge TTS exposes an async API. ``asyncio.run`` raises
+    ``RuntimeError`` when a loop is already running (as it is when the MCP
+    server drives a tool synchronously inside its async runtime), so fall back
+    to a fresh loop running in a worker thread in that case.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_edge_tts_generate(text, voice, rate))
+
+    result: dict = {}
+
+    def _worker() -> None:
+        try:
+            result["value"] = asyncio.run(_edge_tts_generate(text, voice, rate))
+        except Exception as exc:  # noqa: BLE001 - re-raised below
+            result["error"] = exc
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
+
+
 def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
     """Speak text using Orvima's voice (Edge TTS + Ultron modulation).
 
@@ -109,14 +176,18 @@ def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
         return {"ok": False, "error": "edge-tts not installed: pip install edge-tts"}
     if not _AUDIO_AVAILABLE:
         return {"ok": False, "error": "soundfile/sounddevice not installed"}
+    if not isinstance(text, str) or not text.strip():
+        return {"ok": False, "error": "text must be a non-empty string"}
 
-    style = style or _CURRENT_STYLE
+    if style is None:
+        style = _CURRENT_STYLE
+    if style not in _STYLES:
+        return {"ok": False, "error": f"unknown style {style!r}; choose from {list(_STYLES)}"}
     params = _STYLES.get(style, _STYLES["ultron"])
     rate = f"{int((params['speed'] - 1) * 100):+d}%"
 
     try:
-        import asyncio
-        audio_bytes = asyncio.run(_edge_tts_generate(text, _EDGE_VOICE, rate))
+        audio_bytes = _generate_audio_bytes(text, _EDGE_VOICE, rate)
 
         # Save to temp file and read back as numpy
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -163,6 +234,8 @@ def voice_listen(duration: float = 5.0) -> dict:
 
     if not _AUDIO_AVAILABLE:
         return {"ok": False, "error": "sounddevice not installed"}
+    if not isinstance(duration, (int, float)) or duration <= 0:
+        return {"ok": False, "error": "duration must be a positive number"}
 
     try:
         sr = 16000
@@ -190,6 +263,9 @@ def voice_list_styles() -> dict:
     """List available voice styles."""
     return {"ok": True, "styles": list(_STYLES.keys()), "current": _CURRENT_STYLE}
 
+
+voice_say = _threaded_if_running_loop(voice_say)
+voice_listen = _threaded_if_running_loop(voice_listen)
 
 VOICE_TOOLS = (
     voice_say,
