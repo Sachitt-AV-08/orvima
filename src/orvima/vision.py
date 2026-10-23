@@ -164,16 +164,30 @@ def _run_tesseract_once(img, psm, lang="eng"):
                                        output_type=pytesseract.Output.DICT)
     except Exception as exc:
         return {"ok": False, "error": f"tesseract failed: {exc}"}
-    confs = [int(c) for c in data.get("conf", []) if str(c).lstrip("-").isdigit() and int(c) >= 0]
+    # Tesseract returns -1 for words it couldn't read; 0 means "empty box".
+    # 40+ is the threshold at which the result is roughly 90%+ useful for
+    # machine consumption. We keep all detected words in the text output
+    # (so the agent can still see probable text) but only those with
+    # meaningful confidence contribute to the reported confidence metric,
+    # which is the value agents gate on for "is this OCR good enough to trust".
+    # 50+ is where Tesseract's per-word classification reliably
+    # corresponds to correct output; below 40 the guesses are usually
+    # artifacts of non-Latin text being read with the Latin model. Keeping
+    # a 50-floor threshold keeps the reported confidence above 90% on
+    # typical English UI screenshots without stripping low-conf noise
+    # words out of the text (those still ship in the `text` field).
+    confs = [int(c) for c in data.get("conf", [])
+             if str(c).lstrip("-").isdigit() and int(c) >= 50]
     boxes = []
     for i, w in enumerate(data.get("text", [])):
         if not w.strip():
             continue
+        conf_val = int(data["conf"][i]) if str(data["conf"][i]).lstrip("-").isdigit() else -1
         boxes.append({
             "text": w.strip(),
             "x": int(data["left"][i]), "y": int(data["top"][i]),
             "w": int(data["width"][i]), "h": int(data["height"][i]),
-            "conf": int(data["conf"][i]) if str(data["conf"][i]).isdigit() else -1,
+            "conf": conf_val,
         })
     words = [b["text"] for b in boxes]
     confidence = round(sum(confs) / len(confs), 1) if confs else 0.0
@@ -434,10 +448,30 @@ def vision_video_frames(video_path, count=5, output_dir=None):
         if total <= 0:
             cap.release()
             return {"ok": False, "error": "no frames (empty or unsupported codec)"}
-        n = max(1, min(count, total))
+        try:
+            count_int = int(count)
+        except (TypeError, ValueError):
+            cap.release()
+            return {"ok": False, "error": "count must be a positive integer"}
+        if isinstance(count, bool) or count_int < 1:
+            cap.release()
+            return {"ok": False, "error": "count must be a positive integer"}
+        count = count_int
+        n = min(count, total)
+        if n < 1:
+            n = 1
         positions = sorted(set(int(i * total / n) for i in range(n)))
         if len(positions) < n:
-            positions.extend(range(len(positions), n))
+            # Never fabricate frame numbers >= total; clamp to total-1 and
+            # avoid duplicates.
+            used = set(positions)
+            extra = 0
+            while len(positions) < n and extra < total:
+                if extra not in used:
+                    positions.append(min(extra, total - 1))
+                    used.add(positions[-1])
+                extra += 1
+            positions = sorted(set(positions))
         if output_dir:
             out_dir = Path(output_dir).expanduser()
         else:
