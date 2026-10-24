@@ -399,7 +399,10 @@ class SentinelGate:
         if user_requested and not result.allowed:
             if result.risk == "destructive":
                 self.stats["override_denied"] += 1
-                self._log_override(tool, args, result.risk, allowed=False, reason="destructive risk cannot be overridden")
+                self._log_override(
+                    tool, args, result.risk, allowed=False,
+                    reason="destructive risk cannot be overridden",
+                )
                 return GateResult(
                     allowed=False,
                     risk=result.risk,
@@ -409,7 +412,10 @@ class SentinelGate:
                     classifier_said=result.classifier_said,
                 )
             self.stats["override"] += 1
-            self._log_override(tool, args, result.risk, allowed=True, reason="strong user request overrode human approval")
+            self._log_override(
+                tool, args, result.risk, allowed=True,
+                reason="strong user request overrode human approval",
+            )
             return GateResult(
                 allowed=True,
                 risk="overridden",
