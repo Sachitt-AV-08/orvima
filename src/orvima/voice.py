@@ -86,9 +86,9 @@ def _cleanup_orphan_wavs(max_age_hours: float = 1.0):
 _EDGE_VOICES = {
     "ultron":   "en-US-GuyNeural",       # deep male, slightly metallic
     "neutral":  "en-US-RogerNeural",     # male, balanced (newsreader)
-    "vision":   "en-US-AvaNeural",       # female, warm (the vision persona)
-    "crisp":    "en-US-BrianNeural",     # male, clear/crisp
-    "calm":     "en-US-SteffanNeural",   # male, soft delivery
+    "vision":   "en-US-BrianNeural",      # male, warm persona (was female Ava)
+    "crisp":    "en-US-SteffanNeural",   # male, clear/crisp
+    "calm":     "en-US-JasonNeural",      # male, gentle delivery
 }
 
 # Default when a style name is not supplied.
