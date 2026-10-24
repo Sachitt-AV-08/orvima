@@ -19,8 +19,7 @@ import re
 
 import pytest
 
-from orvima import tool_annotations, tools
-from orvima import mail, whatsapp, voice, media, compute, gate, router, vision
+from orvima import compute, gate, mail, media, router, tool_annotations, tools, vision, voice, whatsapp
 
 mcp_types = pytest.importorskip("mcp.types", reason="mcp SDK not installed")
 
