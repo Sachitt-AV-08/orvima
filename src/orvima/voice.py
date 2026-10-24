@@ -45,12 +45,23 @@ except ImportError:
 # Ultron style parameters
 _STYLES = {
     # Ultron: deepest, metallic, slightly slower — the assistant persona.
-    "ultron":  {"pitch_shift": -3.0, "warmth": 0.25, "reverb": 0.35, "metallic": True, "vibrato": 0.005, "speed": 0.94, "voice_profile": "ultron"},
-    "neutral": {"pitch_shift": 0.0, "warmth": 0.0, "reverb": 0.0, "metallic": False, "vibrato": 0.0, "speed": 1.0, "voice_profile": "neutral"},
-    # Vision: warmer, slightly higher female persona — "the more humane" alternative.
-    "vision":  {"pitch_shift": -0.3, "warmth": 0.45, "reverb": 0.14, "metallic": False, "vibrato": 0.004, "speed": 0.97, "voice_profile": "vision"},
-    "crisp":   {"pitch_shift": -1.5, "warmth": 0.12, "reverb": 0.25, "metallic": True,  "vibrato": 0.003, "speed": 1.0,  "voice_profile": "crisp"},
-    "calm":    {"pitch_shift": -1.0, "warmth": 0.1,  "reverb": 0.15, "metallic": False, "vibrato": 0.002, "speed": 0.9,  "voice_profile": "calm"},
+    "ultron":  {"pitch_shift": -3.0, "warmth": 0.25, "reverb": 0.35,
+                "metallic": True, "vibrato": 0.005, "speed": 0.94,
+                "voice_profile": "ultron"},
+    "neutral": {"pitch_shift": 0.0, "warmth": 0.0, "reverb": 0.0,
+                "metallic": False, "vibrato": 0.0, "speed": 1.0,
+                "voice_profile": "neutral"},
+    # Vision: warmer, slightly higher female persona — "the more humane"
+    # alternative that the user prefers over the deep metallic ultron voice.
+    "vision":  {"pitch_shift": -0.3, "warmth": 0.45, "reverb": 0.14,
+                "metallic": False, "vibrato": 0.004, "speed": 0.97,
+                "voice_profile": "vision"},
+    "crisp":   {"pitch_shift": -1.5, "warmth": 0.12, "reverb": 0.25,
+                "metallic": True, "vibrato": 0.003, "speed": 1.0,
+                "voice_profile": "crisp"},
+    "calm":    {"pitch_shift": -1.0, "warmth": 0.1, "reverb": 0.15,
+                "metallic": False, "vibrato": 0.002, "speed": 0.9,
+                "voice_profile": "calm"},
 }
 
 _CURRENT_STYLE = "ultron"
