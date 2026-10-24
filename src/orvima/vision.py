@@ -357,6 +357,11 @@ def vision_match_template(image_path, template_path, threshold=0.8):
     try:
         if not _CV2_AVAILABLE:
             return {"ok": False, "error": "OpenCV not available."}
+        try:
+            threshold = float(threshold)
+        except (TypeError, ValueError):
+            threshold = 0.8
+        threshold = max(0.0, min(1.0, threshold))
         scene = _decode_image(_img_path(image_path))
         tmpl = _decode_image(_img_path(template_path))
         sh, sw = scene.shape[:2]
@@ -386,6 +391,7 @@ def vision_match_template(image_path, template_path, threshold=0.8):
             "template": str(_img_path(template_path)),
             "threshold": threshold,
             "match_count": len(deduped),
+            "matched": len(deduped) > 0,
             "matches": deduped[:25],
         }
     except Exception as exc:

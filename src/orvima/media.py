@@ -42,13 +42,14 @@ def youtube_transcript(url: str, language: str = "en") -> dict:
                      "-o", f"{tmpdir}/%(id)s.%(ext)s", url],
                     capture_output=True, text=True, timeout=60,
                 )
-                # Find the subtitle file
-                for f in Path(tmpdir).glob("*.vtt"):
-                    transcript = _parse_vtt(f.read_text(encoding="utf-8"))
-                    break
-                for f in Path(tmpdir).glob("*.srt"):
-                    transcript = _parse_srt(f.read_text(encoding="utf-8"))
-                    break
+                # Find the subtitle file. Prefer VTT when both are present so
+                # the SRT parse cannot overwrite a higher-quality VTT transcript.
+                vtt_files = list(Path(tmpdir).glob("*.vtt"))
+                srt_files = list(Path(tmpdir).glob("*.srt"))
+                if vtt_files:
+                    transcript = _parse_vtt(vtt_files[0].read_text(encoding="utf-8"))
+                elif srt_files:
+                    transcript = _parse_srt(srt_files[0].read_text(encoding="utf-8"))
 
         return {"ok": True, "title": title, "duration": duration, "transcript": transcript[:5000]}
     except FileNotFoundError:

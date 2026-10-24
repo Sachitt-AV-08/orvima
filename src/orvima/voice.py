@@ -56,6 +56,8 @@ _EDGE_VOICE = "en-US-GuyNeural"  # deep male voice
 def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
     """Apply Ultron-style modulation to raw audio."""
     params = _STYLES.get(style, _STYLES["ultron"])
+    if audio is None or (hasattr(audio, "size") and audio.size == 0):
+        return np.asarray(audio, dtype=np.float32).reshape(-1) if audio is not None else np.zeros(0, dtype=np.float32)
     out = audio.copy()
 
     # Pitch shift via resampling
@@ -90,7 +92,9 @@ def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
             out = out + reverb
 
     # Normalize
-    peak = np.max(np.abs(out))
+    if out.size == 0:
+        return out.astype(np.float32)
+    peak = float(np.max(np.abs(out)))
     if peak > 0:
         out = out / peak * 0.9
 
@@ -230,8 +234,14 @@ def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
         if play:
             sd.play(modulated, sr)
             sd.wait()
+            # The WAV is no longer needed once it has been played; drop it so
+            # repeated calls do not accumulate files in the temp directory.
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
 
-        # Cleanup
+        # Cleanup the intermediate MP3 regardless of whether we played.
         try:
             os.unlink(tmp_path)
         except OSError:

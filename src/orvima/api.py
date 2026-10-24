@@ -40,6 +40,7 @@ store = SessionStore()
 #: and can be re-invoked after installing Sentinel without a restart.
 _gate: Any | None = None
 _gate_lock = threading.Lock()
+_gate_session_id: str | None = None
 #: One of "on", "degraded", "off". Kept distinct from `_gate is None` because
 #: "a human switched this off" and "the gate failed to load" demand different
 #: responses, and reporting a malfunction as a policy is how one becomes the
@@ -154,6 +155,53 @@ def gate_status() -> str:
     return _gate_status
 
 
+def _gate_browser():
+    """Best-effort browser for the gate's page context (API mode).
+
+    The gate is a process-wide singleton, so it cannot bind to one session;
+    resolve the most recently created (or last-used) session's browser instead.
+    Returns None when no session/browser is available.
+    """
+    global _gate_session_id
+    try:
+        sid = _gate_session_id
+        sessions = store.list()
+        if sid is None and sessions:
+            sid = sessions[-1].id
+        if sid is None:
+            return None
+        sess = store.get(sid)
+        return getattr(sess, "browser", None)
+    except Exception:
+        return None
+
+
+def _gate_page_url() -> str:
+    browser = _gate_browser()
+    if browser is None:
+        return ""
+    try:
+        page = getattr(browser, "page", None)
+        if page is not None:
+            return str(getattr(page, "url", "") or "")
+    except Exception:
+        pass
+    try:
+        return str(getattr(browser, "url", "") or "")
+    except Exception:
+        return ""
+
+
+def _gate_snapshot():
+    browser = _gate_browser()
+    if browser is None:
+        return None
+    try:
+        return browser.snapshot()
+    except Exception:
+        return None
+
+
 def get_gate(rebuild: bool = False):
     """The shared gate, built on first use.
 
@@ -177,7 +225,9 @@ def get_gate(rebuild: bool = False):
                 from .sentinel_gate import make_gate
 
                 _gate = make_gate(
-                    classifier_mode=os.environ.get("ORVIMA_SENTINEL_MODE", "off")
+                    classifier_mode=os.environ.get("ORVIMA_SENTINEL_MODE", "off"),
+                    page_url=_gate_page_url,
+                    snapshot=_gate_snapshot,
                 )
                 _gate_status = "degraded" if not getattr(_gate, "available", True) else "on"
             except Exception as exc:
@@ -362,6 +412,8 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
             sess = store.create(mode=body.mode, start_url=body.start_url, goal=body.goal)
         except OrvimaError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        global _gate_session_id
+        _gate_session_id = sess.id
         return {"ok": True, "session": _public(sess)}
 
     @app.get("/api/sessions")
@@ -415,6 +467,8 @@ def create_app(host: str = DEFAULT_HOST) -> FastAPI:
         wait: bool = Query(default=False, description="Block until the run finishes."),
         timeout: float = Query(default=120.0, gt=0, le=3600),
     ) -> dict:
+        global _gate_session_id
+        _gate_session_id = session_id
         sess = store.get(session_id)
         if not body.goal:
             raise HTTPException(status_code=422, detail="goal is required")

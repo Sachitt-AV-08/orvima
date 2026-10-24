@@ -82,7 +82,7 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
         "creates a tab and loads a URL; changes browser state",
     ),
     "browse_close_tab": ToolBehaviour(
-        False, False, True, False,
+        False, False, False, False,
         "closes a tab, discarding its state; not repeatable once gone",
     ),
     "browse_switch_tab": ToolBehaviour(
@@ -90,7 +90,7 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
         "changes which tab is active; a repeat is a no-op",
     ),
     "browse_scroll": ToolBehaviour(
-        False, False, True, True,
+        False, False, False, True,
         "changes scroll position only; repeating just moves further",
     ),
     "browse_press": ToolBehaviour(

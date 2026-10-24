@@ -255,9 +255,10 @@ def run(demo: bool = False, name: str = "orvima") -> int:
             # mcp >= 2.0 (MCPServer) - run_stdio_async handles stdio internally
             await server.run_stdio_async()
 
-    # Playwright's sync_playwright().start() leaves a running event loop.
-    # Use the existing loop instead of creating a new one.
-    loop = asyncio.get_event_loop()
+    # Playwright's sync_playwright().start() leaves a (possibly running) event
+    # loop. Reuse it instead of creating a new one, using the non-deprecated
+    # policy accessor.
+    loop = asyncio.get_event_loop_policy().get_event_loop()
     if loop.is_running():
         # Schedule on the running loop and wait
         future = asyncio.ensure_future(_serve(), loop=loop)
@@ -300,15 +301,33 @@ def _bind(sess, fn):
     sig = inspect.signature(fn)
     params = [p for p in sig.parameters.values() if p.name not in HIDDEN]
 
-    callsig = ", ".join(
-        p.name + ("=" + repr(p.default) if p.default is not inspect._empty else "")
-        for p in params
-    )
+    # Preserve original type annotations so fastmcp can introspect them
+    # for its Pydantic arg model (untyped vars broke registration).
+    try:
+        from typing import get_type_hints as _get_hints
+        _hints = _get_hints(fn)
+    except Exception:
+        _hints = {}
+    _pieces = []
+    for _p in params:
+        _piece = _p.name
+        _ann = _hints.get(_p.name)
+        if _ann is not None and _ann is not inspect._empty:
+            _name = getattr(_ann, "__name__", str(_ann))
+            if "." in str(_name):
+                _name = str(_name).rsplit(".", 1)[-1]
+            _piece += ": " + str(_name)
+        else:
+            _piece += ": Any"
+        if _p.default is not inspect._empty:
+            _piece += " = " + repr(_p.default)
+        _pieces.append(_piece)
+    callsig = ", ".join(_pieces)
     arglist = ", ".join(p.name for p in params) if params else ""
     src = f"def the_tool({callsig}):\n    return __fn(__browser, {arglist})\n"
     if not params:
         src = "def the_tool():\n    return __fn(__browser)\n"
-    ns: dict = {"__fn": fn, "__browser": sess.browser}
+    ns: dict = {"__fn": fn, "__browser": sess.browser, "Any": Any}
     exec(src, ns)  # trusted, static source from our own tool defs
     tool = ns["the_tool"]
     tool.__name__ = name
