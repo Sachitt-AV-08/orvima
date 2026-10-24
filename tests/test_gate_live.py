@@ -16,13 +16,44 @@ import time
 import pytest
 
 pytest.importorskip("sentinel", reason="sentinel not on path")
+pytest.importorskip("httpx", reason="httpx unavailable")
+pytest.importorskip("anyio", reason="anyio unavailable")
 
-from fastapi.testclient import TestClient  # noqa: E402
+import anyio  # noqa: E402
+import httpx  # noqa: E402
 from test_gate_integration import ScriptedPlanner  # noqa: E402
 
 from orvima import api  # noqa: E402
 from orvima.agent import AgentLoop  # noqa: E402
 from orvima.sentinel_gate import make_gate  # noqa: E402
+
+
+class _SyncASGIClient:
+    def __init__(self, app, base_url: str = "http://testserver"):
+        self.app = app
+        self.base_url = base_url
+
+    def _request(self, method, path, **kwargs):
+        async def _run():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app), base_url=self.base_url
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
+        return anyio.run(_run)
+
+    def get(self, *args, **kwargs):
+        return self._request("GET", *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request("POST", *args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self._request("DELETE", *args, **kwargs)
+
+
+TestClient = _SyncASGIClient
+TestClient.__test__ = False
 
 
 @pytest.fixture
@@ -34,7 +65,8 @@ def gate():
 @pytest.fixture
 def client(gate, monkeypatch):
     monkeypatch.setattr(api, "get_gate", lambda rebuild=False: gate)
-    return TestClient(api.create_app())
+    app = api.create_app()
+    return TestClient(app)
 
 
 def wait_until(predicate, timeout: float = 10.0) -> bool:

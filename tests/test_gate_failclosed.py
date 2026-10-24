@@ -41,9 +41,40 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import anyio  # noqa: E402
+import httpx  # noqa: E402
+
 from orvima import api  # noqa: E402
 from orvima.agent import AgentLoop  # noqa: E402
 from orvima.sentinel_gate import SentinelGate  # noqa: E402
+
+
+class _SyncASGIClient:
+    def __init__(self, app, base_url: str = "http://testserver"):
+        self.app = app
+        self.base_url = base_url
+
+    def _request(self, method, path, **kwargs):
+        async def _run():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app), base_url=self.base_url
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
+        return anyio.run(_run)
+
+    def get(self, *args, **kwargs):
+        return self._request("GET", *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request("POST", *args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self._request("DELETE", *args, **kwargs)
+
+
+TestClient = _SyncASGIClient
+TestClient.__test__ = False
 
 
 def _plain(markdown: str) -> str:
@@ -463,11 +494,10 @@ class TestWhatTheDocsClaim:
 
     def test_the_documented_gate_statuses_are_the_ones_the_code_returns(self):
         """README promises on / degraded / off from /api/gate/stats."""
-        from fastapi.testclient import TestClient
-
         from orvima.api import create_app
 
-        client = TestClient(create_app())
+        app = create_app()
+        client = TestClient(app)
         body = client.get("/api/gate/stats").json()
         assert body["gate"] in ("on", "degraded", "off"), body
         assert "gate" in body, "the status the README tells people to read is absent"

@@ -9,17 +9,56 @@ from __future__ import annotations
 
 import pytest
 
-fastapi_testclient = pytest.importorskip("fastapi.testclient", reason="fastapi testclient unavailable")
 pytest.importorskip("sentinel", reason="sentinel not on path")
+pytest.importorskip("httpx", reason="httpx unavailable")
+pytest.importorskip("anyio", reason="anyio unavailable")
 
-from fastapi.testclient import TestClient  # noqa: E402
+import anyio  # noqa: E402
+import httpx  # noqa: E402
 
 from orvima import api  # noqa: E402
 
 
+class _SyncASGIClient:
+    """Sync shim over httpx's async ASGI transport.
+
+    Starlette's ``TestClient`` differs across installed versions: older ones
+    hand ``app=`` to ``httpx.Client``, which modern httpx rejects with
+    ``TypeError: Client.__init__() got an unexpected keyword argument 'app'``.
+    Driving the app through ``httpx.ASGITransport`` (under anyio) avoids that
+    constructor entirely and works regardless of the Starlette version.
+    """
+
+    def __init__(self, app, base_url: str = "http://testserver"):
+        self.app = app
+        self.base_url = base_url
+
+    def _request(self, method, path, **kwargs):
+        async def _run():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app), base_url=self.base_url
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
+        return anyio.run(_run)
+
+    def get(self, *args, **kwargs):
+        return self._request("GET", *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request("POST", *args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self._request("DELETE", *args, **kwargs)
+
+
+TestClient = _SyncASGIClient
+TestClient.__test__ = False
+
 @pytest.fixture
 def client():
-    return TestClient(api.create_app())
+    app = api.create_app()
+    return TestClient(app)
 
 
 def test_health_and_tools_still_work(client) -> None:
