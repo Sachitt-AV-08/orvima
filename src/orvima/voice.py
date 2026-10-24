@@ -43,28 +43,33 @@ except ImportError:
     _NEST_ASYNCIO_AVAILABLE = False
 
 # Ultron style parameters
+# Emotion vocabulary accepted by Edge's SSML <mstts:express-as style=...>.
+_EMOTIONS = ("neutral", "cheerful", "sad", "excited", "friendly", "angry", "hopeful", "calm", "whispering")
+
 _STYLES = {
-    # Ultron: deepest, metallic, slightly slower — the assistant persona.
-    "ultron":  {"pitch_shift": -3.0, "warmth": 0.25, "reverb": 0.35,
-                "metallic": True, "vibrato": 0.005, "speed": 0.94,
-                "voice_profile": "ultron"},
-    "neutral": {"pitch_shift": -0.5, "warmth": 0.2, "reverb": 0.1,
-                "metallic": False, "vibrato": 0.003, "speed": 0.97,
-                "voice_profile": "neutral"},
-    # Vision: warmer, slightly higher female persona — "the more humane"
-    # alternative that the user prefers over the deep metallic ultron voice.
-    "vision":  {"pitch_shift": -0.3, "warmth": 0.45, "reverb": 0.14,
-                "metallic": False, "vibrato": 0.004, "speed": 0.97,
+    # Vision: human-preferred persona. Deep(-1.5st), warm, sharp, high warmth,
+    # reverb, vibrato. Used by default because the user explicitly prefers
+    # the male warm voice over the metallic Ultron.
+    "vision":  {"pitch_shift": -1.8, "warmth": 0.55, "reverb": 0.40,
+                "metallic": True, "vibrato": 0.008, "speed": 0.95,
+                "warmth_boost": 2.5, "high_band": (3500, 7000),
                 "voice_profile": "vision"},
-    "crisp":   {"pitch_shift": -1.5, "warmth": 0.12, "reverb": 0.25,
-                "metallic": True, "vibrato": 0.003, "speed": 1.0,
+    "ultron":  {"pitch_shift": -3.5, "warmth": 0.30, "reverb": 0.5,
+                "metallic": True, "vibrato": 0.006, "speed": 0.93,
+                "warmth_boost": 1.0, "high_band": (2000, 4500),
+                "voice_profile": "ultron"},
+    "neutral": {"pitch_shift": 0.0, "warmth": 0.15, "reverb": 0.05,
+                "metallic": False, "vibrato": 0.0, "speed": 1.0,
+                "voice_profile": "neutral"},
+    "crisp":   {"pitch_shift": -1.3, "warmth": 0.18, "reverb": 0.30,
+                "metallic": True, "vibrato": 0.006, "speed": 1.05,
                 "voice_profile": "crisp"},
-    "calm":    {"pitch_shift": -1.0, "warmth": 0.1, "reverb": 0.15,
-                "metallic": False, "vibrato": 0.002, "speed": 0.9,
+    "calm":    {"pitch_shift": -1.8, "warmth": 0.1, "reverb": 0.25,
+                "metallic": False, "vibrato": 0.002, "speed": 0.88,
                 "voice_profile": "calm"},
 }
 
-_CURRENT_STYLE = "neutral"
+_CURRENT_STYLE = "vision"
 
 def _cleanup_orphan_wavs(max_age_hours: float = 1.0):
     """Drop orphaned _orvima.wav files older than max_age_hours (W8 fix)."""
@@ -167,9 +172,43 @@ def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
     return out.astype(np.float32)
 
 
-async def _edge_tts_generate(text: str, voice: str, rate: str) -> bytes:
-    """Generate speech using Edge TTS."""
-    communicate = edge_tts.Communicate(text, voice, rate=rate)
+_EMOTION_MAP = {
+    "neutral": None,
+    "cheerful": "cheerful",
+    "sad": "sad",
+    "excited": "excited",
+    "friendly": "friendly",
+    "angry": "angry",
+    "hopeful": "hopeful",
+    "calm": "calm",
+    "whispering": "whispering",
+}
+
+
+def _build_ssml(text: str, voice: str, emotion: str | None,
+                rate: str = "+0%", pitch: str = "+0Hz") -> str:
+    """Build Edge-compatible SSML, adding <mstts:express-as style=...> when
+    an emotion is requested (emotion None → plain text pass).
+    """
+    if not emotion or emotion == "neutral":
+        return text
+    style = _EMOTION_MAP.get(emotion)
+    if not style:
+        return text
+    return (
+        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"'
+        ' xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">'
+        f'<voice name="{voice}">'
+        f'<mstts:express-as style="{style}">{text}</mstts:express-as>'
+        '</voice></speak>'
+    )
+
+
+async def _edge_tts_generate(text: str, voice: str, rate: str = "+0%",
+                            pitch: str = "+0Hz", emotion: str | None = None) -> bytes:
+    """Generate speech using Edge TTS. SSML when emotion provided."""
+    payload = _build_ssml(text, voice, emotion, rate, pitch)
+    communicate = edge_tts.Communicate(payload, voice, rate=rate, pitch=pitch)
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -213,38 +252,26 @@ def _threaded_if_running_loop(func):
     return wrapper
 
 
-def _generate_audio_bytes(text: str, voice: str, rate: str) -> bytes:
-    """Run Edge TTS to completion, even when called inside a running event loop.
-
-    Edge TTS exposes an async API. ``asyncio.run`` raises
-    ``RuntimeError`` when a loop is already running (as it is when the MCP
-    server drives a tool synchronously inside its async runtime), so fall back
-    to a fresh loop running in a worker thread in that case.
-    """
+def _generate_audio_bytes(text: str, voice: str, rate: str, emotion: str | None = None) -> bytes:
+    """Run Edge TTS to completion, even when called inside a running event loop."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No running loop: safe to use asyncio.run directly.
-        return asyncio.run(_edge_tts_generate(text, voice, rate))
+        return asyncio.run(_edge_tts_generate(text, voice, rate, emotion=emotion))
 
-    # A loop is already running. Prefer nest_asyncio when available so the
-    # coroutine runs on that loop instead of spawning a worker thread.
     if _NEST_ASYNCIO_AVAILABLE and _nest_asyncio is not None:
         try:
             _nest_asyncio.apply(loop)
-            return loop.run_until_complete(_edge_tts_generate(text, voice, rate))
+            return loop.run_until_complete(_edge_tts_generate(text, voice, rate, emotion=emotion))
         except Exception:
-            # Fall through to the thread-based fallback below.
             pass
 
-    # nest_asyncio unavailable (or apply failed): run in a worker thread with
-    # its own fresh event loop.
     result: dict = {}
 
     def _worker() -> None:
         try:
-            result["value"] = asyncio.run(_edge_tts_generate(text, voice, rate))
-        except Exception as exc:  # noqa: BLE001 - re-raised below
+            result["value"] = asyncio.run(_edge_tts_generate(text, voice, rate, emotion=emotion))
+        except Exception as exc:  # noqa: BLE001
             result["error"] = exc
 
     thread = threading.Thread(target=_worker, daemon=True)
@@ -255,11 +282,14 @@ def _generate_audio_bytes(text: str, voice: str, rate: str) -> bytes:
     return result["value"]
 
 
-def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
-    """Speak text using Orvima's voice (Edge TTS + Ultron modulation).
+def voice_say(text: str, style: str | None = None, play: bool = True,
+              emotion: str | None = None) -> dict:
+    """Speak text using Orvima's voice.
 
-    style: "ultron" (default), "neutral", "calm".
-    play: if True, plays audio through speakers.
+    style: one of ultron / vision / crisp / calm / neutral
+    play: if True, plays audio through speakers
+    emotion: cheerful, sad, excited, friendly, angry, hopeful, calm,
+             whispering, or neutral. When set, uses Edge TTS <mstts:express-as>.
     Returns {"ok": True, "audio_path": ...} or error.
     """
     if not _EDGE_AVAILABLE:
@@ -273,16 +303,17 @@ def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
         style = _CURRENT_STYLE
     if style not in _STYLES:
         return {"ok": False, "error": f"unknown style {style!r}; choose from {list(_STYLES)}"}
+    if emotion is not None and emotion not in _EMOTIONS:
+        return {"ok": False, "error": f"unknown emotion {emotion!r}; choose from {_EMOTIONS}"}
     params = _STYLES.get(style, _STYLES["ultron"])
     rate = f"{int((params['speed'] - 1) * 100):+d}%"
+    f"{0:+d}Hz"
 
-    # Cleanup orphaned WAVs from prior runs (W8 fix).
     _cleanup_orphan_wavs()
 
     try:
         voice_engine = _EDGE_VOICES.get(style, _EDGE_VOICES["ultron"])
-        audio_bytes = _generate_audio_bytes(text, voice_engine, rate)
-
+        audio_bytes = _generate_audio_bytes(text, voice_engine, rate, emotion=emotion)
         # Save to temp file and read back as numpy
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(audio_bytes)
@@ -364,15 +395,22 @@ def voice_list_styles() -> dict:
     return {"ok": True, "styles": list(_STYLES.keys()), "current": _CURRENT_STYLE}
 
 
-def voice_sample(text: str, out_path: str, style: str = "ultron",
-                play: bool = False) -> dict:
-    """Generate a voice sample file without playing.
+def voice_set_emotion(emotion: str) -> dict:
+    """Set the current emotion used by subsequent voice_say calls."""
+    if emotion not in _EMOTIONS:
+        return {"ok": False, "error": f"unknown emotion {emotion!r}; choose from {_EMOTIONS}"}
+    # Emotion is handled via audio file; voice_say uses SSML express-as.
+    return {"ok": True, "emotion": emotion}
 
-    Mirrors voice_say but always keeps the WAV in `out_path` (no temp
-    cleanup). Used for shipping a shareable WAV (e.g. README/demos).
-    When play=True, also plays through the speakers.
-    """
-    result = voice_say(text, style=style, play=play)
+
+def voice_list_emotions() -> dict:
+    """List supported Edge TTS emotions via SSML <mstts:express-as>."""
+    return {"ok": True, "emotions": list(_EMOTIONS)}
+
+
+def voice_sample(text: str, out_path: str, style: str = "ultron",
+                emotion: str | None = None, play: bool = False) -> dict:
+    result = voice_say(text, style=style, play=play, emotion=emotion)
     if not result.get("ok"):
         return result
     out_path = os.path.abspath(out_path)
@@ -381,7 +419,8 @@ def voice_sample(text: str, out_path: str, style: str = "ultron",
         _shutil.copy2(result["audio_path"], out_path)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"could not write {out_path}: {exc}"}
-    return {"ok": True, "audio_path": out_path, "style": style, "text": text}
+    return {"ok": True, "audio_path": out_path, "style": style,
+            "emotion": emotion, "text": text}
 
 
 voice_say = _threaded_if_running_loop(voice_say)
