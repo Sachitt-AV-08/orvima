@@ -100,9 +100,35 @@ _EDGE_VOICES = {
 _EDGE_VOICE = _EDGE_VOICES["ultron"]
 
 
-def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
-    """Apply Ultron-style modulation to raw audio."""
-    params = _STYLES.get(style, _STYLES["ultron"])
+_EMOTION_TWEAKS = {
+    "cheerful":  {"pitch": 1.5, "warmth": 0.35, "reverb": 0.15, "vibrato": 0.010, "speed": 1.08, "sharpness": 1.4},
+    "sad":       {"pitch": -2.0, "warmth": 0.1, "reverb": 0.5, "vibrato": 0.003, "speed": 0.92, "sharpness": 0.6},
+    "excited":   {"pitch": 2.0, "warmth": 0.3, "reverb": 0.25, "vibrato": 0.02, "speed": 1.15, "sharpness": 1.6},
+    "friendly":  {"pitch": 0.5, "warmth": 0.4, "reverb": 0.18, "vibrato": 0.005, "speed": 1.0, "sharpness": 1.0},
+    "angry":     {"pitch": -0.5, "warmth": -0.1, "reverb": 0.1, "vibrato": 0.025, "speed": 1.15, "sharpness": 1.6},
+    "hopeful":   {"pitch": 1.0, "warmth": 0.4, "reverb": 0.3, "vibrato": 0.007, "speed": 1.0, "sharpness": 1.1},
+    "calm":      {"pitch": -1.5, "warmth": 0.3, "reverb": 0.45, "vibrato": 0.002, "speed": 0.90, "sharpness": 0.8},
+    "whispering":{"pitch": -2.0, "warmth": 0.3, "reverb": 0.55, "vibrato": 0.003, "speed": 0.85, "sharpness": 0.6},
+}
+
+
+def _modulate(audio: np.ndarray, sr: int, style: str, emotion: str | None = None) -> np.ndarray:
+    """Apply Orvima-style modulation (deeper + sharper + humane) to raw audio."""
+    params = dict(_STYLES.get(style, _STYLES["ultron"]))
+    # emotion overlays scale the base params
+    tweak = _EMOTION_TWEAKS.get(emotion or "", {})
+    if tweak:
+        params["pitch_shift"] = params.get("pitch_shift", 0.0) + tweak.get("pitch", 0.0)
+        params["warmth"] = max(0.0, params.get("warmth", 0.0) + tweak.get("warmth", 0.0))
+        params["reverb"] = min(0.7, params.get("reverb", 0.0) + tweak.get("reverb", 0.0))
+        params["vibrato"] = params.get("vibrato", 0.0) + tweak.get("vibrato", 0.0)
+        params["speed"] = params.get("speed", 1.0) * tweak.get("speed", 1.0)
+        # sharpness affects metallic boost
+        original_metallic = params.get("metallic", False)
+        metallic_boost = tweak.get("sharpness", 1.0)
+        params["metallic"] = metallic_boost > 1.1 or original_metallic
+        params["_metallic_gain"] = metallic_boost
+
     if audio is None or (hasattr(audio, "size") and audio.size == 0):
         return np.asarray(audio, dtype=np.float32).reshape(-1) if audio is not None else np.zeros(0, dtype=np.float32)
     out = audio.copy()
@@ -140,7 +166,8 @@ def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
         if high < 1.0:
             b, a = signal.butter(2, [low, high], btype="band")
             filtered = signal.filtfilt(b, a, out)
-            out = out + 0.22 * filtered
+            gain = params.get("_metallic_gain", 1.0)
+            out = out + 0.22 * gain * filtered
 
     # Vibrato (subtle pitch wobble, humanises the tone).
     vibrato = params.get("vibrato", 0.0)
@@ -206,9 +233,10 @@ def _build_ssml(text: str, voice: str, emotion: str | None,
 
 async def _edge_tts_generate(text: str, voice: str, rate: str = "+0%",
                             pitch: str = "+0Hz", emotion: str | None = None) -> bytes:
-    """Generate speech using Edge TTS. SSML when emotion provided."""
-    payload = _build_ssml(text, voice, emotion, rate, pitch)
-    communicate = edge_tts.Communicate(payload, voice, rate=rate, pitch=pitch)
+    """Generate speech using Edge TTS. Uses plain text (no SSML) so short
+    phrases stay short even with an explicit emotion.
+    """
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -325,7 +353,7 @@ def voice_say(text: str, style: str | None = None, play: bool = True,
             data = data.mean(axis=1)
 
         # Modulate
-        modulated = _modulate(data, sr, style)
+        modulated = _modulate(data, sr, style, emotion=emotion)
 
         # Save modulated audio
         out_path = tmp_path.replace(".mp3", "_orvima.wav")
