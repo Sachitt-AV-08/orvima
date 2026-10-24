@@ -57,13 +57,13 @@ def test_annotations_build_a_valid_types_object() -> None:
     for name in NAMES:
         ann = mcp_types.ToolAnnotations(
             title=name.replace("_", " "),
-            read_only_hint=tool_annotations.for_tool(name).read_only,
-            destructive_hint=tool_annotations.for_tool(name).destructive,
-            idempotent_hint=tool_annotations.for_tool(name).idempotent,
-            open_world_hint=tool_annotations.for_tool(name).open_world,
+            readOnlyHint=tool_annotations.for_tool(name).read_only,
+            destructiveHint=tool_annotations.for_tool(name).destructive,
+            idempotentHint=tool_annotations.for_tool(name).idempotent,
+            openWorldHint=tool_annotations.for_tool(name).open_world,
         )
-        assert isinstance(ann.read_only_hint, bool)
-        assert isinstance(ann.destructive_hint, bool)
+        assert isinstance(ann.readOnlyHint, bool)
+        assert isinstance(ann.destructiveHint, bool)
 
 
 def test_an_unannotated_tool_raises_instead_of_defaulting() -> None:
@@ -89,10 +89,10 @@ def test_the_server_actually_passes_annotations_to_the_sdk() -> None:
     ann = mcp_server._annotations_for("browse_click")
     assert ann is not None, "_annotations_for returned None on an SDK that supports them"
     # ToolAnnotations exposes snake_case attributes with camelCase aliases on the wire.
-    assert ann.destructive_hint is True
-    assert ann.read_only_hint is False
+    assert ann.destructiveHint is True
+    assert ann.readOnlyHint is False
 
-    assert mcp_server._annotations_for("browse_snapshot").read_only_hint is True
+    assert mcp_server._annotations_for("browse_snapshot").readOnlyHint is True
 
 
 def _advertised(server) -> dict:
