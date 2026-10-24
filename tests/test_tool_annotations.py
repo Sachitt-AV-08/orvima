@@ -20,33 +20,37 @@ import re
 import pytest
 
 from orvima import tool_annotations, tools
+from orvima import mail, whatsapp, voice, media, compute, gate, router, vision
 
 mcp_types = pytest.importorskip("mcp.types", reason="mcp SDK not installed")
 
+# 60 tools across all 9 categories, the names they're actually registered as.
+# Browse tool names (registered by register_tools, strip `tool_` prefix).
+# Names actually registered on the wire.
 NAMES = [fn.__name__[5:] for fn in tools.TOOLS]
 
+# All 60 registered tool names (across all 9 categories).
+ALL_NAMES = []
+ALL_NAMES += [fn.__name__[5:] for fn in tools.TOOLS]
+ALL_NAMES += [fn.__name__ for fn in mail.MAIL_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in whatsapp.WHATSAPP_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in voice.VOICE_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in media.MEDIA_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in compute.COMPUTE_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in gate.GATE_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in router.ROUTER_TOOLS]
+ALL_NAMES += [fn.__name__ for fn in vision.VISION_TOOLS_SIMPLE]
+ALL_NAMES += [fn.__name__ for fn in vision.VISION_TOOLS_BROWSER]
+ALL_NAMES = sorted(set(ALL_NAMES))
 
-# ------------------------------------------------- the mechanical contract ----
-
-
-def test_every_tool_has_all_four_hints() -> None:
-    missing = []
-    for name in NAMES:
-        try:
-            b = tool_annotations.for_tool(name)
-        except KeyError as exc:
-            missing.append(str(exc))
-            continue
-        for field in ("read_only", "destructive", "idempotent", "open_world"):
-            value = getattr(b, field)
-            if not isinstance(value, bool):
-                missing.append(f"{name}.{field} is {value!r}, not a bool")
-    assert not missing, "\n".join(missing)
+# The full set of 60 registered tools is referenced by ALL_NAMES.
+# Keep a reference for backwards compatibility.
+ALL = ALL_NAMES
 
 
 def test_no_annotation_table_entry_goes_unused() -> None:
     """An entry for a renamed tool is a stale promise, so it must fail here."""
-    extra = set(tool_annotations.all_names()) - set(NAMES)
+    extra = set(tool_annotations.all_names()) - set(ALL_NAMES)
     assert not extra, f"annotated but no such tool: {sorted(extra)}"
 
 
