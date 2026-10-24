@@ -48,8 +48,8 @@ _STYLES = {
     "ultron":  {"pitch_shift": -3.0, "warmth": 0.25, "reverb": 0.35,
                 "metallic": True, "vibrato": 0.005, "speed": 0.94,
                 "voice_profile": "ultron"},
-    "neutral": {"pitch_shift": 0.0, "warmth": 0.0, "reverb": 0.0,
-                "metallic": False, "vibrato": 0.0, "speed": 1.0,
+    "neutral": {"pitch_shift": -0.5, "warmth": 0.2, "reverb": 0.1,
+                "metallic": False, "vibrato": 0.003, "speed": 0.97,
                 "voice_profile": "neutral"},
     # Vision: warmer, slightly higher female persona — "the more humane"
     # alternative that the user prefers over the deep metallic ultron voice.
@@ -64,7 +64,7 @@ _STYLES = {
                 "voice_profile": "calm"},
 }
 
-_CURRENT_STYLE = "ultron"
+_CURRENT_STYLE = "neutral"
 
 def _cleanup_orphan_wavs(max_age_hours: float = 1.0):
     """Drop orphaned _orvima.wav files older than max_age_hours (W8 fix)."""
