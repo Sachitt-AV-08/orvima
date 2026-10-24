@@ -30,6 +30,8 @@ dependencies = [
   "pytesseract>=0.3.10",
   "Pillow>=10.0",
   "sympy>=1.12",
+  "scipy>=1.12.0",
+  "numpy>=1.26",
 ]
 
 [project.optional-dependencies]

@@ -44,13 +44,44 @@ except ImportError:
 
 # Ultron style parameters
 _STYLES = {
-    "ultron": {"pitch_shift": -2.5, "reverb": 0.3, "metallic": True, "speed": 0.95},
-    "neutral": {"pitch_shift": 0.0, "reverb": 0.0, "metallic": False, "speed": 1.0},
-    "calm": {"pitch_shift": -1.0, "reverb": 0.15, "metallic": False, "speed": 0.9},
+    # Ultron: deepest, metallic, slightly slower — the assistant persona.
+    "ultron":  {"pitch_shift": -3.0, "warmth": 0.25, "reverb": 0.35, "metallic": True, "vibrato": 0.005, "speed": 0.94, "voice_profile": "ultron"},
+    "neutral": {"pitch_shift": 0.0, "warmth": 0.0, "reverb": 0.0, "metallic": False, "vibrato": 0.0, "speed": 1.0, "voice_profile": "neutral"},
+    # Vision: warmer, slightly higher female persona — "the more humane" alternative.
+    "vision":  {"pitch_shift": -0.3, "warmth": 0.45, "reverb": 0.14, "metallic": False, "vibrato": 0.004, "speed": 0.97, "voice_profile": "vision"},
+    "crisp":   {"pitch_shift": -1.5, "warmth": 0.12, "reverb": 0.25, "metallic": True,  "vibrato": 0.003, "speed": 1.0,  "voice_profile": "crisp"},
+    "calm":    {"pitch_shift": -1.0, "warmth": 0.1,  "reverb": 0.15, "metallic": False, "vibrato": 0.002, "speed": 0.9,  "voice_profile": "calm"},
 }
 
 _CURRENT_STYLE = "ultron"
-_EDGE_VOICE = "en-US-GuyNeural"  # deep male voice
+
+def _cleanup_orphan_wavs(max_age_hours: float = 1.0):
+    """Drop orphaned _orvima.wav files older than max_age_hours (W8 fix)."""
+    import time as _time
+    cutoff = _time.time() - max_age_hours * 3600
+    tmp = tempfile.gettempdir()
+    for name in os.listdir(tmp):
+        if not name.endswith("_orvima.wav"):
+            continue
+        path = os.path.join(tmp, name)
+        try:
+            mtime = os.path.getmtime(path)
+            if mtime < cutoff:
+                os.unlink(path)
+        except OSError:
+            pass
+# Voice persona catalogue — each style maps to a distinct Edge TTS voice so the
+# resulting tone varies materially. Bumped to 5 personalities as requested.
+_EDGE_VOICES = {
+    "ultron":   "en-US-GuyNeural",       # deep male, slightly metallic
+    "neutral":  "en-US-RogerNeural",     # male, balanced (newsreader)
+    "vision":   "en-US-AvaNeural",       # female, warm (the vision persona)
+    "crisp":    "en-US-BrianNeural",     # male, clear/crisp
+    "calm":     "en-US-SteffanNeural",   # male, soft delivery
+}
+
+# Default when a style name is not supplied.
+_EDGE_VOICE = _EDGE_VOICES["ultron"]
 
 
 def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
@@ -73,7 +104,19 @@ def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
             elif len(out) > len(audio):
                 out = out[:len(audio)]
 
-    # Metallic EQ: boost 2-4kHz
+    # Warmth: boost 250-500 Hz low-mids ("more humane", away from the
+    # metallic high-band). Applied with a gentle bandpass approach.
+    warmth = params.get("warmth", 0.0)
+    if warmth > 0 and _SCIPY_AVAILABLE:
+        nyq = sr / 2.0
+        w_low = 220 / nyq
+        w_high = 500 / nyq
+        if w_high < 1.0 and w_low > 0:
+            b, a = signal.butter(2, [w_low, w_high], btype="band")
+            filtered_w = signal.filtfilt(b, a, out)
+            out = out + warmth * (1.0 - warmth * 0.5) * filtered_w
+
+    # Metallic EQ: boost 2-4kHz (moderate, doesn't turn metallic in a tinny way)
     if params["metallic"] and _SCIPY_AVAILABLE:
         nyq = sr / 2.0
         low = 2000 / nyq
@@ -81,15 +124,27 @@ def _modulate(audio: np.ndarray, sr: int, style: str) -> np.ndarray:
         if high < 1.0:
             b, a = signal.butter(2, [low, high], btype="band")
             filtered = signal.filtfilt(b, a, out)
-            out = out + 0.3 * filtered
+            out = out + 0.22 * filtered
 
-    # Reverb (simple delay-based)
+    # Vibrato (subtle pitch wobble, humanises the tone).
+    vibrato = params.get("vibrato", 0.0)
+    if vibrato > 0 and _SCIPY_AVAILABLE:
+        t = np.arange(len(out)) / sr
+        hz = 5.0
+        # light amplitude tremolo
+        out = out * (1.0 + 0.02 * vibrato * np.sin(2 * np.pi * hz * t))
+
+    # Reverb (simple delay-based, slightly longer than before).
     if params["reverb"] > 0:
-        delay_samples = int(sr * 0.04)
+        delay_samples = int(sr * 0.05)
         if delay_samples < len(out):
             reverb = np.zeros_like(out)
             reverb[delay_samples:] = out[:-delay_samples] * params["reverb"]
-            out = out + reverb
+            # feedback tail
+            for i in range(delay_samples + 1, len(out)):
+                if i - delay_samples >= 0:
+                    reverb[i] += reverb[i - delay_samples] * 0.4
+            out = out + reverb * 0.35
 
     # Normalize
     if out.size == 0:
@@ -210,8 +265,12 @@ def voice_say(text: str, style: str | None = None, play: bool = True) -> dict:
     params = _STYLES.get(style, _STYLES["ultron"])
     rate = f"{int((params['speed'] - 1) * 100):+d}%"
 
+    # Cleanup orphaned WAVs from prior runs (W8 fix).
+    _cleanup_orphan_wavs()
+
     try:
-        audio_bytes = _generate_audio_bytes(text, _EDGE_VOICE, rate)
+        voice_engine = _EDGE_VOICES.get(style, _EDGE_VOICES["ultron"])
+        audio_bytes = _generate_audio_bytes(text, voice_engine, rate)
 
         # Save to temp file and read back as numpy
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -294,6 +353,26 @@ def voice_list_styles() -> dict:
     return {"ok": True, "styles": list(_STYLES.keys()), "current": _CURRENT_STYLE}
 
 
+def voice_sample(text: str, out_path: str, style: str = "ultron",
+                play: bool = False) -> dict:
+    """Generate a voice sample file without playing.
+
+    Mirrors voice_say but always keeps the WAV in `out_path` (no temp
+    cleanup). Used for shipping a shareable WAV (e.g. README/demos).
+    When play=True, also plays through the speakers.
+    """
+    result = voice_say(text, style=style, play=play)
+    if not result.get("ok"):
+        return result
+    out_path = os.path.abspath(out_path)
+    try:
+        import shutil as _shutil
+        _shutil.copy2(result["audio_path"], out_path)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"could not write {out_path}: {exc}"}
+    return {"ok": True, "audio_path": out_path, "style": style, "text": text}
+
+
 voice_say = _threaded_if_running_loop(voice_say)
 voice_listen = _threaded_if_running_loop(voice_listen)
 
@@ -302,4 +381,5 @@ VOICE_TOOLS = (
     voice_listen,
     voice_set_style,
     voice_list_styles,
+    voice_sample,
 )
