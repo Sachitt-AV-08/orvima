@@ -98,6 +98,8 @@ class GateResult:
     risk: str = "unknown"
     reason: str = ""
     confidence: float = 0.0
+    #: calibrated 0.0-1.0 chance this action would be approved by a similar past decision
+    probability: float = 0.0
     #: True when Sentinel was unavailable or errored; the action is NOT approved
     degraded: bool = False
     classifier_said: str | None = None
@@ -109,6 +111,7 @@ class GateResult:
             "risk": self.risk,
             "reason": self.reason,
             "confidence": round(self.confidence, 4),
+            "probability": round(self.probability, 4),
             "degraded": self.degraded,
             "classifier_said": self.classifier_said,
         }
@@ -132,6 +135,7 @@ class SentinelGate:
         snapshot: Callable[[], dict | None] | None = None,
         classifier_mode: str = "off",
         approval_ttl: float = 300.0,
+        probability_threshold: float | None = None,
     ) -> None:
         """
         `page_url` and `snapshot` let the gate see the page. Without them it
@@ -162,6 +166,7 @@ class SentinelGate:
         self._approval_memory: set[str] = set()
         self._override_log: list[dict] = []
         self.approval_ttl = approval_ttl
+        self._probability_threshold = probability_threshold
         self.stats: dict[str, int] = {
             "evaluated": 0,
             "auto_approved": 0,
@@ -268,6 +273,7 @@ class SentinelGate:
                     "waiting for a human"
                 ),
                 confidence=current.confidence,
+                probability=0.0,
                 degraded=current.degraded,
             )
         if approved_risk:
@@ -286,6 +292,7 @@ class SentinelGate:
                         f"{current.risk}"
                     ),
                     confidence=current.confidence,
+                    probability=0.0,
                     degraded=current.degraded,
                 )
         return GateResult(
@@ -293,6 +300,7 @@ class SentinelGate:
             risk=current.risk,
             reason=f"approval still valid for {current.risk} ({current.reason})",
             confidence=current.confidence,
+            probability=current.probability if hasattr(current, "probability") else 0.5,
             degraded=current.degraded,
         )
 
@@ -334,7 +342,7 @@ class SentinelGate:
         actions are simply not overridable.
         """
         if not self.enabled:
-            return GateResult(allowed=True, risk="unknown", reason="gate disabled")
+            return GateResult(allowed=True, risk="unknown", reason="gate disabled", probability=1.0)
 
         # Approval memory: if a human has approved the exact same action
         # before, auto-approve without re-running the classifier.
@@ -346,6 +354,7 @@ class SentinelGate:
                 risk="remembered",
                 reason="auto-approved: human previously approved this exact action",
                 confidence=1.0,
+                probability=1.0,
                 degraded=False,
             )
 
@@ -361,6 +370,7 @@ class SentinelGate:
                     "to enable judging, or set ORVIMA_SENTINEL=off to run "
                     "unattended with no gate in force."
                 ),
+                probability=0.0,
                 degraded=True,
             )
 
@@ -381,14 +391,35 @@ class SentinelGate:
                 allowed=False,
                 risk="unknown",
                 reason=f"sentinel raised {type(exc).__name__}: {exc}; refusing to auto-approve",
+                probability=0.0,
                 degraded=True,
             )
 
+        # Probability: calibrated 0.0-1.0 chance this action would be
+        # approved by a similar past decision.
+        #   - safe/low risk → high (0.85-0.95)
+        #   - outward/destructive → lower (0.3-0.5)
+        #   - degraded → capped at 0.3
+        #   - approval memory hit already returned 1.0 above
+        risk = decision.risk.value
+        raw_conf = float(decision.confidence) if decision.confidence is not None else 0.5
+        if risk in ("safe", "low"):
+            base = max(0.85, raw_conf)
+        elif risk == "outward":
+            base = 0.45 + raw_conf * 0.15
+        elif risk == "destructive":
+            base = 0.15 + raw_conf * 0.10
+        else:
+            base = raw_conf
+        prob = max(0.05, min(0.99, base))
+        if decision.degraded:
+            prob = min(prob, 0.3)
         result = GateResult(
             allowed=not decision.needs_human,
             risk=decision.risk.value,
             reason=decision.reason,
             confidence=decision.confidence,
+            probability=prob,
             degraded=decision.degraded,
             classifier_said=decision.classifier_said.value if decision.classifier_said else None,
         )
@@ -408,6 +439,7 @@ class SentinelGate:
                     risk=result.risk,
                     reason=f"strong user request cannot override destructive risk: {result.reason}",
                     confidence=result.confidence,
+                    probability=min(result.probability, 0.3),
                     degraded=result.degraded,
                     classifier_said=result.classifier_said,
                 )
@@ -421,6 +453,7 @@ class SentinelGate:
                 risk="overridden",
                 reason=f"strong user request overrode {result.risk} risk: {result.reason}",
                 confidence=1.0,
+                probability=1.0,
                 degraded=result.degraded,
                 classifier_said=result.classifier_said,
             )

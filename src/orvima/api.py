@@ -56,6 +56,7 @@ class _RefusingResult:
     risk = "unknown"
     reason = "the approval gate could not be loaded; refusing to auto-approve"
     confidence = 0.0
+    probability = 0.0
     degraded = True
     classifier_said = None
 
@@ -66,6 +67,7 @@ class _RefusingResult:
             "risk": self.risk,
             "reason": self.reason,
             "confidence": self.confidence,
+            "probability": self.probability,
             "degraded": self.degraded,
             "classifier_said": self.classifier_said,
         }
