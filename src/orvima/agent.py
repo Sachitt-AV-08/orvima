@@ -379,8 +379,7 @@ class AgentLoop:
         if not errands_list:
             return None
         try:
-            from errands.orvima_bridge import OrvimaBrowser, runner_for
-            from errands.sentinel_bridge import make_classifier
+            from errands.orvima_bridge import runner_for
         except Exception:
             return None
         try:
