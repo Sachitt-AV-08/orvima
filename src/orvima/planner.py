@@ -68,12 +68,33 @@ class DemoPlanner(Planner):
         return {"tool": plan[idx]["tool"], "args": plan[idx]["args"]}
 
 
+def _ollama_available() -> tuple[str, str]:
+    """Probe local Ollama. Returns (base_url, model) if available, else ("", "")."""
+    import httpx
+    try:
+        r = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
+        if r.status_code == 200:
+            tags = r.json().get("models", [])
+            model = "llama3.1:8b"
+            if tags:
+                model = tags[0].get("name", model)
+            return "http://localhost:11434/v1", model
+    except Exception:
+        pass
+    return "", ""
+
+
 def planner_for(mode: str) -> Planner:
     if mode == "demo":
         return DemoPlanner()
     base = os.environ.get("ORVIMA_LLM_BASE")
     key = os.environ.get("ORVIMA_LLM_KEY")
     model = os.environ.get("ORVIMA_LLM_MODEL", "gpt-4o-mini")
+    # Ollama fallback when no cloud key configured (independent AI assistant)
+    if not (base and key):
+        ollama_base, ollama_model = _ollama_available()
+        if ollama_base:
+            return LLMPlanner(base=ollama_base, key="ollama", model=ollama_model)
     if not (base and key):
         raise RuntimeError(
             "real-mode planning needs an LLM: set ORVIMA_LLM_BASE, ORVIMA_LLM_KEY "

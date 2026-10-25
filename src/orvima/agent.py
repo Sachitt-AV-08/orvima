@@ -278,6 +278,12 @@ class AgentLoop:
         sess.status = "running"
         sess.bus.emit({"type": "status", "status": "running"})
         sess.log("goal", goal=goal)
+
+        # Try Errands recipe match first (no generative planning needed).
+        errand_result = self._try_errand(goal)
+        if errand_result is not None:
+            return errand_result
+
         try:
             for step in range(1, self.max_steps + 1):
                 # Operator pause control, not an approval gate: _paused starts
@@ -352,6 +358,66 @@ class AgentLoop:
             sess.log("error", error=str(exc))
             return {"ok": False, "error": str(exc)}
 
+    def _try_errand(self, goal: str) -> dict | None:
+        """Consult Errands' recipe registry before any generative planning.
+
+        Returns a result dict when a recipe matched and ran (or refused),
+        None when no recipe matched and the normal planner loop should run.
+        """
+        recipes_dir = os.environ.get("ORVIMA_RECIPES_DIR", "")
+        if not recipes_dir:
+            import pathlib
+            recipes_dir = str(pathlib.Path.home() / ".orvima" / "recipes")
+        try:
+            import errands
+        except ImportError:
+            return None
+        try:
+            errands_list = errands.load_dir(recipes_dir)
+        except Exception:
+            return None
+        if not errands_list:
+            return None
+        try:
+            from errands.orvima_bridge import OrvimaBrowser, runner_for
+            from errands.sentinel_bridge import make_classifier
+        except Exception:
+            return None
+        try:
+            runner, browser, gate = runner_for(
+                self.session.browser, errands_list,
+                session_id=self.session.id,
+                classifier_mode=os.environ.get("ORVIMA_SENTINEL_MODE", "off"),
+                approval_timeout=self.approval_timeout,
+                on_event=self.session.bus.emit,
+            )
+            result = runner.run_goal(goal, errands_list)
+        except Exception as exc:
+            self.session.log("errand_error", error=str(exc))
+            return None
+        # Map errands result to orvima result shape
+        sess = self.session
+        if result.state.value == "refused":
+            sess.status = "denied"
+            sess.bus.emit({"type": "status", "status": sess.status})
+            sess.log("refused", tool="", reason=result.refused or result.reason,
+                     code=result.refused or "no_match")
+            # Surface refusal code to UI
+            sess.bus.emit({"type": "refused", "code": result.refused or "no_match",
+                           "reason": result.reason or result.refused})
+            return {"ok": False, "denied": True, "summary": result.refused or result.reason,
+                    "steps": len(result.steps), "attempts": self.attempts, "goal": goal}
+        if result.state.value == "done":
+            summary = f"errand {result.errand} done: {len(result.steps)} steps"
+            sess.log("summary", summary=summary)
+            sess.status = "done"
+            sess.bus.emit({"type": "status", "status": "done"})
+            sess.maybe_frame(force=True)
+            return {"ok": True, "steps": len(result.steps), "attempts": self.attempts,
+                    "goal": goal, "summary": summary, "via": "errand"}
+        # Other states (failed, abandoned) - fall through
+        return None
+
     def _authorise(self, step: int, name: str, args: dict, user_requested: bool = False) -> bool:
         """Consult the gate. True = run it, False = a human said no.
 
@@ -388,7 +454,9 @@ class AgentLoop:
             return True
 
         sess = self.session
-        result = self.gate.check(name, args, session_id=sess.id, user_requested=user_requested)
+        # plan text flows through to the gate (sentinel's plan-aware escalation).
+        plan_text = args.pop("plan", "") if isinstance(args, dict) else ""
+        result = self.gate.check(name, args, session_id=sess.id, user_requested=user_requested, plan=plan_text)
         sess.log("gate", step=step, tool=name, **result.as_log())
         sess.bus.emit({"type": "gate", "step": step, "tool": name, **result.as_log()})
         if result.allowed:
