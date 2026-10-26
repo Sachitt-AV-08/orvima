@@ -47,7 +47,7 @@ CSS = DOCS / "style.css"
 MAIN_JS = DOCS / "main.js"
 TRANSCRIPT = DOCS / "transcript.json"
 
-RELEASE_TAG = "v0.1.6"
+RELEASE_TAG = "v0.3.0"
 
 
 def tool_names() -> set[str]:
