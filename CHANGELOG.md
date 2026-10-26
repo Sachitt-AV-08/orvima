@@ -5,6 +5,31 @@ All notable changes to Orvima will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-26
+
+### Added
+- 60 MCP tools across 9 domains (Browse, Mail, WhatsApp, Voice, Media, Compute, Gate, Router, Vision)
+- Sentinel probability score (0.0-1.0 calibrated approval likelihood) in GateResult
+- Errands recipe-first routing in agent loop (cached plan replay before generative planning)
+- Ollama planner fallback (independent AI assistant mode without cloud keys)
+- Plan-aware gating: plan text flows through to Sentinel's risk escalation
+- Voice personas: 5 (ultron, vision, crisp, calm, neutral), all male; SSML emotions via post-processing
+- Vision module: 11 tools (OCR 92%+ conf, template match, faces, video frames/OCR/scene changes)
+- Tesseract 5.5.3 + OpenCV 5.0.0 + Pillow vision stack
+- Strong-request override (Jev-style user_requested) wired into agent loop
+- Approval memory: exact previously-human-approved actions auto-approve
+- Disclaimer.md + Security.md liability declarations
+- Promo video: 35s master + 30s/15s/9:16 cuts + subtitles burned + VO mixed
+- Branding guide (docs/branding.md), launch announcements (docs/launch.md)
+- Starlette TestClient replaced with _SyncASGIClient shim (9 test files)
+- Annotation tests expanded to all 60 tools
+- W7/W9/W10-W20 audit warnings fixed
+
+### Changed
+- OCR confidence threshold 40 → 50 (92%+ on clean English text)
+- Voice default persona: ultron → vision (BrianNeural male warm)
+- Tool count: 49 → 60
+
 ## [0.2.0] - 2026-10-21
 
 ### Added
