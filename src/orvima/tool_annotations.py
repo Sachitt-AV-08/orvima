@@ -157,7 +157,7 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
     # Voice call tools (free, local audio + WebRTC)
     "voice_call_speak": ToolBehaviour(False, True, False, False, "speaks text aloud to caller; plays audio"),
     "voice_call_listen": ToolBehaviour(True, False, True, False, "records and transcribes caller speech; read-only"),
-    "voice_call_local": ToolBehaviour(False, True, False, False, "starts local audio conversation; uses mic and speaker"),
+    "voice_call_local": ToolBehaviour(False, True, False, False, "starts local audio conversation; uses mic/speaker"),
     "voice_call_hangup": ToolBehaviour(False, True, False, False, "ends active call; releases audio resources"),
     "voice_call_transcript": ToolBehaviour(True, False, True, False, "returns conversation transcript; read-only"),
     "voice_call_status": ToolBehaviour(True, False, True, False, "returns call status; read-only"),
