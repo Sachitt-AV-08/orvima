@@ -151,6 +151,17 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
     "voice_listen": ToolBehaviour(True, False, True, False, "records and transcribes speech; read-only capture"),
     "voice_set_style": ToolBehaviour(False, False, True, False, "changes voice style setting; idempotent"),
     "voice_list_styles": ToolBehaviour(True, False, True, False, "lists available voice styles"),
+    "voice_set_emotion": ToolBehaviour(False, False, True, False, "changes voice emotion; idempotent"),
+    "voice_list_emotions": ToolBehaviour(True, False, True, False, "lists available emotions; read-only"),
+    "voice_sample": ToolBehaviour(False, True, False, False, "generates voice sample audio; writes file"),
+    # Voice call tools (free, local audio + WebRTC)
+    "voice_call_speak": ToolBehaviour(False, True, False, False, "speaks text aloud to caller; plays audio"),
+    "voice_call_listen": ToolBehaviour(True, False, True, False, "records and transcribes caller speech; read-only"),
+    "voice_call_local": ToolBehaviour(False, True, False, False, "starts local audio conversation; uses mic and speaker"),
+    "voice_call_hangup": ToolBehaviour(False, True, False, False, "ends active call; releases audio resources"),
+    "voice_call_transcript": ToolBehaviour(True, False, True, False, "returns conversation transcript; read-only"),
+    "voice_call_status": ToolBehaviour(True, False, True, False, "returns call status; read-only"),
+    "voice_call_webrtc": ToolBehaviour(False, True, False, True, "opens WebRTC peer-to-peer call in browser"),
     # Media tools
     "youtube_transcript": ToolBehaviour(True, False, True, True, "fetches YouTube transcript; read-only"),
     "youtube_search": ToolBehaviour(True, False, True, True, "searches YouTube; read-only"),

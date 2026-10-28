@@ -15,7 +15,7 @@ import inspect
 import sys
 from typing import Any
 
-from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, vision, voice, whatsapp
+from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, vision, voice, voice_call, whatsapp
 from .agent import SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
@@ -208,6 +208,7 @@ def run(demo: bool = False, name: str = "orvima") -> int:
     for mod_name, mod_tools in [
         ("whatsapp", whatsapp.WHATSAPP_TOOLS),
         ("voice", voice.VOICE_TOOLS),
+        ("voice_call", voice_call.VOICE_CALL_TOOLS),
         ("media", media.MEDIA_TOOLS),
         ("compute", compute.COMPUTE_TOOLS),
         ("gate", gate.GATE_TOOLS),
