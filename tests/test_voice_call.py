@@ -1,13 +1,21 @@
 """Tests for orvima.voice_call module."""
 
+import pytest
+
+pytest.importorskip("sounddevice")
+pytest.importorskip("soundfile")
+pytest.importorskip("edge_tts")
+
 from orvima.voice_call import (
-    voice_call_speak,
+    VOICE_CALL_TOOLS,
+    voice_call_hangup,
     voice_call_listen,
+    voice_call_phone,
+    voice_call_record,
+    voice_call_speak,
     voice_call_status,
     voice_call_transcript,
-    voice_call_hangup,
     voice_call_webrtc,
-    VOICE_CALL_TOOLS,
 )
 
 
@@ -34,7 +42,7 @@ def test_voice_call_webrtc():
 
 
 def test_voice_call_listen_silent():
-    r = voice_call_listen(duration=1.0)
+    r = voice_call_listen(duration=0.5)
     assert r["ok"] is True
 
 
@@ -44,8 +52,20 @@ def test_voice_call_speak():
     assert r["played"] is True
 
 
+def test_voice_call_record():
+    r = voice_call_record(duration=0.5)
+    assert r["ok"] is True
+    assert "path" in r
+
+
+def test_voice_call_phone_no_creds():
+    r = voice_call_phone(to="+1234567890", message="Hello")
+    assert r["ok"] is False
+    assert "Twilio" in r["error"] or "not configured" in r["error"]
+
+
 def test_voice_call_tools_tuple():
-    assert len(VOICE_CALL_TOOLS) == 7
+    assert len(VOICE_CALL_TOOLS) == 9
 
 
 def test_voice_call_tools_annotated():
