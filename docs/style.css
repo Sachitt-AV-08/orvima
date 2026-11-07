@@ -209,7 +209,8 @@ code { font-family: var(--mono); font-size: 0.9em; }
 
 .hero-glow {
   position: absolute;
-  inset: -40% -20%;
+  inset: 0;
+  max-width: 100%;
   background:
     radial-gradient(ellipse 80% 60% at 70% 20%, var(--accent-soft) 0%, transparent 60%),
     radial-gradient(ellipse 50% 40% at 20% 80%, rgba(78, 201, 160, 0.06) 0%, transparent 50%);
