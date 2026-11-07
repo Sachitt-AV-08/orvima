@@ -428,6 +428,16 @@ def _save_transcript(call_type: str, turns: list):
 
 
 # Tool tuple for MCP registration
+def voice_call_answer(call_sid: str = "", greeting: str = "Hello! Thank you for calling Orvima.") -> dict:
+    """Answer an incoming call and start a conversation.
+
+    In local mode (no telephony), this starts a local audio conversation.
+    With telephony configured, this would be triggered by a webhook.
+    """
+    # For now, delegate to local audio mode
+    return voice_call_local(greeting=greeting, max_turns=10)
+
+
 def voice_call_record(duration: float = 5.0, output_path: str = "") -> dict:
     """Record audio from the microphone for `duration` seconds.
 
@@ -458,6 +468,7 @@ VOICE_CALL_CORE_TOOLS = (
     voice_call_status,
     voice_call_webrtc,
     voice_call_record,
+    voice_call_answer,
 )
 
 # Phone dialing is independent of desktop audio; it only needs httpx (core).

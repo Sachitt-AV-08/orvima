@@ -163,6 +163,7 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
     "voice_call_status": ToolBehaviour(True, False, True, False, "returns call status; read-only"),
     "voice_call_webrtc": ToolBehaviour(False, True, False, True, "opens WebRTC peer-to-peer call in browser"),
     "voice_call_record": ToolBehaviour(False, True, False, False, "records audio from microphone to WAV file"),
+    "voice_call_answer": ToolBehaviour(False, True, False, False, "answers incoming call and starts conversation"),
     "voice_call_phone": ToolBehaviour(False, True, False, True, "dials real phone via optional provider"),
     # Media tools
     "youtube_transcript": ToolBehaviour(True, False, True, True, "fetches YouTube transcript; read-only"),

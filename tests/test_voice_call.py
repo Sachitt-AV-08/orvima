@@ -65,7 +65,7 @@ def test_voice_call_phone_no_creds():
 
 
 def test_voice_call_tools_tuple():
-    assert len(VOICE_CALL_TOOLS) == 9
+    assert len(VOICE_CALL_TOOLS) == 10
 
 
 def test_voice_call_tools_annotated():
