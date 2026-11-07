@@ -8,7 +8,9 @@ pytest.importorskip("edge_tts")
 
 from orvima.voice_call import (
     VOICE_CALL_TOOLS,
+    voice_call_answer,
     voice_call_hangup,
+    voice_call_list,
     voice_call_listen,
     voice_call_phone,
     voice_call_record,
@@ -64,8 +66,20 @@ def test_voice_call_phone_no_creds():
     assert "Twilio" in r["error"] or "not configured" in r["error"]
 
 
+def test_voice_call_list():
+    r = voice_call_list()
+    assert r["ok"] is True
+    assert "calls" in r
+
+
+def test_voice_call_answer():
+    # Will start a local conversation; just check it returns
+    r = voice_call_answer(greeting="Hello test")
+    assert isinstance(r, dict)
+
+
 def test_voice_call_tools_tuple():
-    assert len(VOICE_CALL_TOOLS) == 10
+    assert len(VOICE_CALL_TOOLS) == 11
 
 
 def test_voice_call_tools_annotated():
