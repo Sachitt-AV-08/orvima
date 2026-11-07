@@ -32,16 +32,25 @@ dependencies = [
   "sympy>=1.12",
   "scipy>=1.12.0",
   "numpy>=1.26",
-  "faster-whisper>=1.0",
+  "nest-asyncio>=1.6",
 ]
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.2"]
+voice = [
+  "edge-tts>=6.1",
+  "sounddevice>=0.4",
+  "soundfile>=0.12",
+  "faster-whisper>=1.0",
+  "openai-whisper>=20231117",
+]
+saas = ["psutil>=5.9"]
 dev = [
   "pytest>=7.4",
   "pytest-cov>=4.1",
   "ruff>=0.6",
   "mcp>=1.2",
+  "nest-asyncio>=1.6",
 ]
 
 [project.scripts]

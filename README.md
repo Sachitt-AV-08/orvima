@@ -4,7 +4,7 @@ One AI tool gets eyes and hands on the web - on your machine. Open-source, local
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
-[![Version 0.2.1](https://img.shields.io/badge/version-0.2.1-blue.svg)](pyproject.toml)
+[![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml/badge.svg)](https://github.com/Sachitt-AV-08/orvima/actions/workflows/ci.yml)
 
 ## Why Orvima

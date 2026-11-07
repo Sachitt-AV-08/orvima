@@ -48,7 +48,7 @@ from .policy import (
 )
 from .types import Answer, Choice, Noul, Question, QuestionType, Score
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Answer",

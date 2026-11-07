@@ -145,7 +145,7 @@ def cmd_mcp(mode: str) -> int:
     return run(demo=(mode == "demo"), name="orvima")
 
 
-def cmd_run(goal: str, mode: str, max_steps: int) -> int:
+def cmd_run(goal: str, mode: str, max_steps: int, notify: bool = False) -> int:
     from .agent import AgentLoop, SessionStore  # noqa: PLC0415
 
     store = SessionStore()
@@ -156,6 +156,15 @@ def cmd_run(goal: str, mode: str, max_steps: int) -> int:
             _out(result)
             return 1
         _out(result)
+        if notify:
+            try:
+                from .voice import _EDGE_AVAILABLE, voice_say
+
+                if _EDGE_AVAILABLE:
+                    summary = result.get("summary", "Task complete.") if isinstance(result, dict) else "Task complete."
+                    voice_say(summary)
+            except Exception:  # best-effort local notification
+                pass
         print("\ntranscript:")
         for row in sess.transcript:
             kind = row["kind"]
@@ -175,8 +184,111 @@ def _brief(data: dict) -> str:
     return str({k: v for k, v in data.items() if k not in ("png_b64",)})
 
 
+def _optional_module(name: str) -> bool:
+    """Whether an optional Python module is importable."""
+    try:
+        from importlib.util import find_spec
+
+        return find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def _doctor_fix() -> None:
+    """Best-effort repair for missing optional components."""
+    import subprocess
+
+    python = sys.executable
+    extras = []
+    voice_libs = []
+    if not _optional_module("edge_tts"):
+        voice_libs.append("edge-tts")
+    if not _optional_module("sounddevice"):
+        voice_libs.append("sounddevice")
+    if not _optional_module("soundfile"):
+        voice_libs.append("soundfile")
+    if not _optional_module("faster_whisper"):
+        voice_libs.append("faster-whisper")
+    if voice_libs:
+        extras.append(("voice", voice_libs))
+    mcp_libs = []
+    if not _optional_module("mcp"):
+        mcp_libs.append("mcp>=1.2")
+    if mcp_libs:
+        extras.append(("mcp", mcp_libs))
+
+    if extras:
+        package_list = [lib for _, libs in extras for lib in libs]
+        print("$ " + python + " -m pip install --upgrade " + " ".join(package_list))
+        try:
+            result = subprocess.run(
+                [python, "-m", "pip", "install", "--upgrade", *package_list],
+                check=False,
+            )
+            if result.returncode == 0:
+                print("  Optional extras installed.")
+                return
+            print("  pip install did not complete, trying uv if available...")
+        except FileNotFoundError:
+            print("  pip is not available for this Python; trying uv...")
+
+        import shutil
+
+        uv = shutil.which("uv")
+        if uv:
+            print("$ " + uv + " pip install --python " + python + " " + " ".join(package_list))
+            try:
+                result = subprocess.run(
+                    [uv, "pip", "install", "--python", python, *package_list],
+                    check=False,
+                )
+                if result.returncode == 0:
+                    print("  Optional extras installed with uv.")
+                    return
+            except FileNotFoundError:
+                pass
+        print("  Install manually with one of:")
+        print("    python -m pip install --upgrade " + " ".join(package_list))
+        print("    uv pip install --python .venv/Scripts/python " + " ".join(package_list))
+    else:
+        print("  Python extras already installed.")
+
+    if not _optional_tesseract():
+        print()
+        print("  OCR (Tesseract) is missing. Install the binary:")
+        if sys.platform.startswith("win"):
+            print("    winget install tesseract-ocr.tesseract")
+        elif sys.platform == "darwin":
+            print("    brew install tesseract")
+        else:
+            print("    sudo apt install tesseract-ocr  # or your distro equivalent")
+        print("  Or set ORVIMA_TESSERACT_PATH to an existing binary.")
+
+
+def _optional_tesseract() -> bool:
+    """Whether the Tesseract binary behind pytesseract is reachable."""
+    try:
+        import pytesseract
+
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
+
 def _mode_env(mode: str) -> None:
-    os.environ.setdefault("ORVIMA_MODE", mode)
+    """Carry the requested serve mode into session creation without exporting it.
+
+    Previously this wrote ORVIMA_MODE into os.environ, which leaked into sibling
+    tests and other processes sharing the interpreter. The API now keeps its own
+    per-process default (see orvima.api.set_default_session_mode).
+    """
+    try:
+        from .api import set_default_session_mode as _set_default  # noqa: PLC0415
+    except Exception:  # pragma: no cover - api import failure surfaces elsewhere
+        os.environ.setdefault("ORVIMA_MODE", mode)
+        return
+    _set_default(mode)
 
 
 def resolve_mode(mode: str | None) -> str:
@@ -211,7 +323,7 @@ def _warn_inert_browser_flag(browser: str | None, mode: str) -> None:
         )
 
 
-def cmd_doctor(mode: str | None = None) -> int:
+def cmd_doctor(mode: str | None = None, fix: bool = False) -> int:
     """Run a health check on the Orvima environment.
 
     Reports the mode it would run in, and fails when that mode is not the one
@@ -222,6 +334,10 @@ def cmd_doctor(mode: str | None = None) -> int:
 
     checks = []
     active = resolve_mode(mode)
+    if fix:
+        print("Attempting to fix missing optional components...")
+        _doctor_fix()
+        print()
     drives_a_browser = active == "real"
 
     # 0. The mode itself, first because everything below depends on it.
@@ -319,7 +435,12 @@ def cmd_doctor(mode: str | None = None) -> int:
     checks.append({"name": "LLM endpoint", "ok": llm_ok, "detail": detail})
 
     # 5. MCP config validity (basic JSON check)
-    mcp_config_path = Path.home() / ".config" / "orvima" / "mcp.json"
+    if sys.platform.startswith("win"):
+        mcp_config_path = Path.home() / "AppData" / "Roaming" / "orvima" / "mcp.json"
+    elif sys.platform == "darwin":
+        mcp_config_path = Path.home() / "Library" / "Application Support" / "orvima" / "mcp.json"
+    else:
+        mcp_config_path = Path.home() / ".config" / "orvima" / "mcp.json"
     if mcp_config_path.exists():
         try:
             json.loads(mcp_config_path.read_text())
@@ -332,6 +453,20 @@ def cmd_doctor(mode: str | None = None) -> int:
         mcp_ok = None
         detail = "not found (run 'orvima mcp' to generate a starter config)"
     checks.append({"name": "MCP config", "ok": mcp_ok, "detail": detail})
+
+    # Optional capabilities: these broaden what Orvima can do but are not
+    # required for the MCP browser loop. Report them as informational
+    # (○) instead of red (✗) so a missing one is visible without making a
+    # core `doctor` fail, and without papering over it as "passed".
+    optional = [
+        ("Voice (Edge TTS)", _optional_module("edge_tts")),
+        ("Voice (audio I/O)", _optional_module("sounddevice") and _optional_module("soundfile")),
+        ("Voice STT", _optional_module("faster_whisper") or _optional_module("whisper")),
+        ("OCR (Tesseract)", _optional_tesseract()),
+    ]
+    for name, ok in optional:
+        detail = "available" if ok else "missing — see docs/Vision & voice sections for install commands"
+        checks.append({"name": name, "ok": None, "detail": detail})
 
     # Print results
     all_ok = all(c["ok"] is True for c in checks if c["ok"] is not None)
@@ -396,13 +531,15 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("goal")
     p_run.add_argument("--mode", default=None, choices=["demo", "real"])
     p_run.add_argument("--max-steps", type=int, default=20, help="cap on actions before giving up")
+    p_run.add_argument("--notify", action="store_true", help="speak a local voice summary when done")
 
     p_bench = sub.add_parser("bench", help="measure agent-loop task pass rate (no browser needed)")
     p_bench.add_argument("--json", action="store_true", help="machine-readable summary")
     p_bench.add_argument("--shape", help="only run tasks of this shape")
     p_bench.add_argument("--out", help="write the full report to this JSON file")
 
-    sub.add_parser("doctor", help="health check: browser, profile, port, LLM, MCP")
+    p_doctor = sub.add_parser("doctor", help="health check: browser, profile, port, LLM, MCP")
+    p_doctor.add_argument("--fix", action="store_true", help="install missing optional dependencies when possible")
 
     args = parser.parse_args(argv)
 
@@ -432,7 +569,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mcp":
             return cmd_mcp(mode)
         if args.command == "run":
-            return cmd_run(args.goal, mode, args.max_steps)
+            return cmd_run(
+                args.goal, mode, args.max_steps, notify=(args.notify or os.environ.get("ORVIMA_VOICE_NOTIFY") == "1")
+            )
         if args.command == "bench":
             from .bench import main as bench_main
 
@@ -445,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
                 bench_argv += ["--out", args.out]
             return bench_main(bench_argv)
         if args.command == "doctor":
-            return cmd_doctor(mode)
+            return cmd_doctor(mode, fix=getattr(args, "fix", False))
         return 2
     except Exception as exc:  # noqa: BLE001 - friendly CLI errors
         print(f"orvima: {exc}", file=sys.stderr)
