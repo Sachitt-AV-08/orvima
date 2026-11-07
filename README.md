@@ -1,6 +1,6 @@
 # Orvima
 
-One AI tool gets eyes and hands on the web - on your machine. Open-source, local-first browser automation MCP server: 60 tools across 9 domains, a Sentinel safety gate, local OCR/vision, Edge TTS voice, and CDP real-profile attach. Runs at `127.0.0.1`.
+One AI tool gets eyes and hands on the web - on your machine. Open-source, local-first browser automation MCP server: 67 tools across 10 domains, a Sentinel safety gate, local OCR/vision, Edge TTS voice, free voice calling (mic + WebRTC), and CDP real-profile attach. Runs at `127.0.0.1`.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
@@ -117,7 +117,7 @@ claude mcp add orvima orvima mcp
 
 To run against the offline simulator instead of a real browser, add `"--mode", "demo"` to `args`.
 
-## Feature categories (60 MCP tools)
+## Feature categories (67 MCP tools)
 
 | Category | Count | Highlights |
 |----------|-------|------------|
