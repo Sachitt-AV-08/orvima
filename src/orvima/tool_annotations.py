@@ -197,6 +197,8 @@ _BEHAVIOUR: dict[str, ToolBehaviour] = {
     # Router tools (errands recipe matching)
     "goal_list_recipes": ToolBehaviour(True, False, True, False, "lists available recipes; read-only"),
     "goal_route": ToolBehaviour(True, False, True, False, "matches goal to recipe; read-only"),
+    "route_call_intent": ToolBehaviour(True, False, True, False, "matches caller speech to call recipe; read-only"),
+    "list_call_recipes": ToolBehaviour(True, False, True, False, "lists available call recipes; read-only"),
 }
 
 

@@ -15,8 +15,22 @@ import inspect
 import sys
 from typing import Any
 
-from . import compute, gate, mail, media, prompts, router, tool_annotations, tools, vision, voice, voice_call, whatsapp
-from .agent import SessionStore
+from . import (
+    call_router,
+    compute,
+    gate,
+    mail,
+    media,
+    prompts,
+    router,
+    tool_annotations,
+    tools,
+    vision,
+    voice,
+    voice_call,
+    whatsapp,
+)
+from .agent import LazyBrowser, SessionStore
 
 HIDDEN = ("session", "browser", "_args", "_kw")
 
@@ -205,16 +219,29 @@ def run(demo: bool = False, name: str = "orvima") -> int:
             file=sys.stderr,
         )
 
-    for mod_name, mod_tools in [
-        ("whatsapp", whatsapp.WHATSAPP_TOOLS),
-        ("voice", voice.VOICE_TOOLS),
-        ("voice_call", voice_call.VOICE_CALL_TOOLS),
-        ("media", media.MEDIA_TOOLS),
-        ("compute", compute.COMPUTE_TOOLS),
-        ("gate", gate.GATE_TOOLS),
-        ("router", router.ROUTER_TOOLS),
-        ("vision", vision.VISION_TOOLS_SIMPLE),
-    ]:
+    # Optional capability groups. Gate registration on the same availability
+    # guards the module's own functions already use, so a missing optional
+    # dependency turns into "that group is absent" rather than a pile of tools
+    # that always return the same unavailable-error.
+    _module_groups = [
+        ("whatsapp", whatsapp.WHATSAPP_TOOLS, True),
+        ("voice", voice.VOICE_TOOLS, getattr(voice, "_EDGE_AVAILABLE", True)),
+        ("voice_call", voice_call.VOICE_CALL_CORE_TOOLS, getattr(voice, "_EDGE_AVAILABLE", True)),
+        ("voice_phone", voice_call.VOICE_CALL_PHONE_TOOLS, True),
+        ("media", media.MEDIA_TOOLS, True),
+        ("compute", compute.COMPUTE_TOOLS, True),
+        ("gate", gate.GATE_TOOLS, True),
+        ("router", router.ROUTER_TOOLS, True),
+        ("call_router", call_router.CALL_ROUTER_TOOLS, True),
+        ("vision", vision.VISION_TOOLS_SIMPLE, True),
+    ]
+    for mod_name, mod_tools, available in _module_groups:
+        if not available:
+            if mod_name in ("voice", "voice_call"):
+                print(f"orvima: {mod_name} tools disabled. Install optional voice extras to enable.", file=sys.stderr)
+            else:
+                print(f"orvima: {mod_name} tools disabled. Install orvima[mcp] to enable.", file=sys.stderr)
+            continue
         if not register_module_tools(server, mod_tools):
             print(
                 f"orvima: this mcp SDK predates tool annotations for {mod_name} tools.",
@@ -236,6 +263,13 @@ def run(demo: bool = False, name: str = "orvima") -> int:
     if not register_prompts(server):
         print(
             "orvima: this mcp SDK predates prompt support. Install mcp>=2 to get prompts.",
+            file=sys.stderr,
+        )
+
+    if not register_resources(server, sess):
+        print(
+            "orvima: this mcp SDK predates resource support or resource registration failed. "
+            "Tools still work; only read-only resource endpoints are missing.",
             file=sys.stderr,
         )
 
@@ -274,6 +308,59 @@ def run(demo: bool = False, name: str = "orvima") -> int:
     else:
         loop.run_until_complete(_serve())
     return 0
+
+
+def register_resources(server: Any, sess: Any) -> bool:
+    """Register read-only MCP resources backed by the live browser/session.
+
+    Resources let clients inspect page and session state without performing
+    an action. They are additive: any registration failure is non-fatal and
+    reported, the same model as tool registration.
+    """
+    if not hasattr(server, "resource"):
+        return False
+
+    try:
+        import json as _json
+
+        def _snapshot_resource() -> str:
+            try:
+                snapshot = sess.browser.snapshot()
+                return _json.dumps(snapshot, default=str)
+            except Exception as exc:  # noqa: BLE001 - resource handlers are read-only
+                return _json.dumps({"ok": False, "error": str(exc)})
+
+        def _screenshot_resource() -> str:
+            try:
+                shot = sess.browser.screenshot()
+                return shot.get("png_b64", "")
+            except Exception:  # noqa: BLE001
+                return ""
+
+        def _tabs_resource() -> str:
+            try:
+                return _json.dumps(sess.browser.list_tabs(), default=str)
+            except Exception as exc:  # noqa: BLE001
+                return _json.dumps({"ok": False, "error": str(exc)})
+
+        def _transcript_resource() -> str:
+            try:
+                return _json.dumps(sess.transcript[-100:], default=str)
+            except Exception as exc:  # noqa: BLE001
+                return _json.dumps({"ok": False, "error": str(exc)})
+
+        for name, handler, description in (
+            ("orvima://current/snapshot", _snapshot_resource, "Current page snapshot"),
+            ("orvima://current/screenshot", _screenshot_resource, "Base64 PNG screenshot of the current page"),
+            ("orvima://tabs/list", _tabs_resource, "Open browser tabs"),
+            ("orvima://session/transcript", _transcript_resource, "Recent agent action transcript for the session"),
+        ):
+            server.resource(name, description=description)(handler)
+
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"orvima: MCP resource registration failed: {exc}", file=sys.stderr)
+        return False
 
 
 def _doc(fn) -> str:
@@ -328,7 +415,9 @@ def _bind(sess, fn):
     src = f"def the_tool({callsig}):\n    return __fn(__browser, {arglist})\n"
     if not params:
         src = "def the_tool():\n    return __fn(__browser)\n"
-    ns: dict = {"__fn": fn, "__browser": sess.browser, "Any": Any}
+    # Bind lazily: the sync Playwright object is created on the thread that
+    # first invokes the tool, not at MCP registration time.
+    ns: dict = {"__fn": fn, "__browser": LazyBrowser(sess), "Any": Any}
     exec(src, ns)  # trusted, static source from our own tool defs
     tool = ns["the_tool"]
     tool.__name__ = name
