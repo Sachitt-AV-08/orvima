@@ -18,9 +18,24 @@ import time
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
-import soundfile as sf
 
+# Optional audio stack. Guarding at import time means the rest of orvima keeps
+# working (and `orvima mcp` keeps starting) when these are not installed.
+try:
+    import sounddevice as sd
+    import soundfile as sf
+    _AUDIO_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised when extras missing
+    sd = None
+    sf = None
+    _AUDIO_AVAILABLE = False
+
+try:
+    from faster_whisper import WhisperModel
+    _WHISPER_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised when extras missing
+    WhisperModel = None
+    _WHISPER_AVAILABLE = False
 # Lazy-loaded whisper model
 _whisper_model = None
 _whisper_lock = threading.Lock()
@@ -32,11 +47,12 @@ _call_lock = threading.Lock()
 
 def _get_whisper_model(model_size: str = "base"):
     """Lazy-load the faster-whisper model."""
+    if not _WHISPER_AVAILABLE:
+        raise RuntimeError("faster-whisper is not installed: pip install faster-whisper")
     global _whisper_model
     with _whisper_lock:
         if _whisper_model is None:
             try:
-                from faster_whisper import WhisperModel
                 _whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
             except Exception as exc:
                 raise RuntimeError(f"Failed to load whisper model: {exc}") from None
@@ -45,6 +61,8 @@ def _get_whisper_model(model_size: str = "base"):
 
 def _record_audio(duration: float = 5.0, sample_rate: int = 16000) -> np.ndarray:
     """Record audio from the default microphone."""
+    if not _AUDIO_AVAILABLE:
+        raise RuntimeError("sounddevice/soundfile are not installed: pip install sounddevice soundfile")
     try:
         audio = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype="float32")
         sd.wait()
@@ -55,6 +73,8 @@ def _record_audio(duration: float = 5.0, sample_rate: int = 16000) -> np.ndarray
 
 def _play_audio(audio_path: str):
     """Play an audio file through the default speaker."""
+    if not _AUDIO_AVAILABLE:
+        raise RuntimeError("sounddevice/soundfile are not installed: pip install sounddevice soundfile")
     try:
         data, sr = sf.read(audio_path)
         sd.play(data, sr)
@@ -248,17 +268,86 @@ def voice_call_status() -> dict:
         }
 
 
-def voice_call_webrtc(signal_url: str = "") -> dict:
-    """Start a WebRTC peer-to-peer call.
+def voice_call_phone(
+    to: str,
+    message: str = "",
+    audio_url: str = "",
+    provider: str = "twilio",
+) -> dict:
+    """Dial a real phone number through a configured telephony provider.
 
-    Opens a browser tab with a WebRTC client that connects peer-to-peer.
-    Requires a signaling server (use a free one like PeerJS, or self-host).
+    This is telephony, not local audio: it requires an account on Twilio
+    (or a compatible provider) and the corresponding credentials in
+    environment variables. Orvima's local-first behavior is preserved when
+    no provider is configured — the call simply explains what to set.
+
+    Twilio:
+      ORVIMA_TWILIO_SID      Account SID
+      ORVIMA_TWILIO_TOKEN   Auth token
+      ORVIMA_TWILIO_FROM    Caller ID (purchased number, e.g. +15551234567)
+
+    ``message`` is spoken with TwiML <Say>; ``audio_url`` takes precedence
+    and plays a remotely hosted audio file with <Play>.
     """
+    provider = (provider or "twilio").lower()
+    if provider != "twilio":
+        return {"ok": False, "error": "only 'twilio' provider is implemented so far"}
+
+    sid = os.environ.get("ORVIMA_TWILIO_SID")
+    token = os.environ.get("ORVIMA_TWILIO_TOKEN")
+    caller = os.environ.get("ORVIMA_TWILIO_FROM")
+    if not (sid and token and caller):
+        return {
+            "ok": False,
+            "error": (
+                "Twilio is not configured. Set ORVIMA_TWILIO_SID, ORVIMA_TWILIO_TOKEN, "
+                "and ORVIMA_TWILIO_FROM, then retry."
+            ),
+        }
+    if not to:
+        return {"ok": False, "error": "destination 'to' is required"}
+
+    if audio_url:
+        twiml = f'<Response><Play>{_escape_twiml(audio_url)}</Play></Response>'
+    else:
+        say_text = message or "Hello from Orvima. Your requested task is done."
+        twiml = f'<Response><Say voice="alice">{_escape_twiml(say_text)}</Say></Response>'
+
+    try:
+        import httpx
+
+        status_callback = os.environ.get("ORVIMA_TWILIO_STATUS_CALLBACK_URL")
+        data = {"To": to, "From": caller, "Twiml": twiml}
+        if status_callback:
+            data["StatusCallback"] = status_callback
+        resp = httpx.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Calls.json",
+            auth=(sid, token),
+            data=data,
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            return {"ok": False, "error": f"twilio returned {resp.status_code}: {resp.text}"}
+        body = resp.json()
+        return {
+            "ok": True,
+            "provider": "twilio",
+            "sid": body.get("sid"),
+            "status": body.get("status"),
+            "to": to,
+            "from": caller,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def voice_call_webrtc(signal_url: str = "") -> dict:
+    """Start a WebRTC peer-to-peer call."""
     try:
         import webbrowser
+
         if not signal_url:
             signal_url = os.environ.get("ORVIMA_WEBRTC_SIGNAL_URL", "https://peerjs.com")
-        # Create a simple WebRTC page
         html = _webrtc_html(signal_url)
         tmp = tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w")
         tmp.write(html)
@@ -267,6 +356,15 @@ def voice_call_webrtc(signal_url: str = "") -> dict:
         return {"ok": True, "mode": "webrtc", "signal_url": signal_url, "page": tmp.name}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+def _escape_twiml(value: str) -> str:
+    return (
+        (value or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 def _webrtc_html(signal_url: str) -> str:
@@ -330,7 +428,28 @@ def _save_transcript(call_type: str, turns: list):
 
 
 # Tool tuple for MCP registration
-VOICE_CALL_TOOLS = (
+def voice_call_record(duration: float = 5.0, output_path: str = "") -> dict:
+    """Record audio from the microphone for `duration` seconds.
+
+    Saves to `output_path` or a temp file in ~/.orvima/calls/.
+    Returns the file path and duration.
+    """
+    try:
+        audio = _record_audio(duration=duration)
+        if output_path:
+            path = output_path
+        else:
+            calls_dir = Path.home() / ".orvima" / "calls"
+            calls_dir.mkdir(parents=True, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            path = str(calls_dir / f"recording_{ts}.wav")
+        sf.write(path, audio, 16000)
+        return {"ok": True, "path": path, "duration": duration, "samples": len(audio)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+VOICE_CALL_CORE_TOOLS = (
     voice_call_speak,
     voice_call_listen,
     voice_call_local,
@@ -338,4 +457,10 @@ VOICE_CALL_TOOLS = (
     voice_call_transcript,
     voice_call_status,
     voice_call_webrtc,
+    voice_call_record,
 )
+
+# Phone dialing is independent of desktop audio; it only needs httpx (core).
+VOICE_CALL_PHONE_TOOLS = (voice_call_phone,)
+
+VOICE_CALL_TOOLS = (*VOICE_CALL_CORE_TOOLS, *VOICE_CALL_PHONE_TOOLS)
