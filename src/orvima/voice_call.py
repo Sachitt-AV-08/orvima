@@ -438,6 +438,28 @@ def voice_call_answer(call_sid: str = "", greeting: str = "Hello! Thank you for 
     return voice_call_local(greeting=greeting, max_turns=10)
 
 
+def voice_call_list() -> dict:
+    """List recent calls and their transcripts."""
+    calls_dir = Path.home() / ".orvima" / "calls"
+    if not calls_dir.is_dir():
+        return {"ok": True, "calls": [], "count": 0}
+    files = sorted(calls_dir.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+    calls = []
+    for f in files[:20]:
+        try:
+            import json
+            data = json.loads(f.read_text(encoding="utf-8"))
+            calls.append({
+                "file": f.name,
+                "type": data.get("type", "unknown"),
+                "timestamp": data.get("timestamp", ""),
+                "turns": len(data.get("turns", [])),
+            })
+        except Exception:
+            pass
+    return {"ok": True, "calls": calls, "count": len(calls)}
+
+
 def voice_call_record(duration: float = 5.0, output_path: str = "") -> dict:
     """Record audio from the microphone for `duration` seconds.
 
@@ -469,6 +491,7 @@ VOICE_CALL_CORE_TOOLS = (
     voice_call_webrtc,
     voice_call_record,
     voice_call_answer,
+    voice_call_list,
 )
 
 # Phone dialing is independent of desktop audio; it only needs httpx (core).
