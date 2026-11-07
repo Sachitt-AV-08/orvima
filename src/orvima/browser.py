@@ -19,6 +19,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.error
@@ -409,11 +410,72 @@ def _frame_is_readable(frame, data: dict) -> bool:
     return True
 
 
+def available_engines() -> list[str]:
+    """Return the list of browser engines Playwright can launch.
+
+    Used by cross-browser support and `orvima doctor`. Always includes
+    'chromium'; 'firefox' and 'webkit' are added when their binaries are
+    installed.
+    """
+    engines = ["chromium"]
+    try:
+        from playwright.sync_api import sync_playwright
+        pw = sync_playwright().start()
+        for name in ("firefox", "webkit"):
+            try:
+                browser = getattr(pw, name).launch(headless=True)
+                browser.close()
+                engines.append(name)
+            except Exception:
+                pass
+        pw.stop()
+    except Exception:
+        pass
+    return engines
+
+
 def detect_channel() -> str | None:
     """Return 'chrome', 'msedge', 'brave', or None (use bundled chromium)."""
     env = (os.environ.get("ORVIMA_BROWSER") or "").strip().lower()
     if env in ("chrome", "msedge", "brave", "chromium"):
         return None if env == "chromium" else env
+    # Non-Windows: detect executables by command name plus conventional
+    # install locations. Windows behaviour is unchanged above.
+    if sys.platform != "win32":
+        platform_paths = {
+            "chrome": [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+            ],
+            "msedge": [
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/usr/bin/microsoft-edge",
+                "/usr/bin/microsoft-edge-stable",
+            ],
+            "brave": [
+                "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+                "/usr/bin/brave",
+                "/usr/bin/brave-browser",
+            ],
+        }
+        commands = {
+            "chrome": ("google-chrome-stable", "google-chrome", "chromium", "chrome"),
+            "msedge": ("microsoft-edge", "microsoft-edge-stable", "msedge"),
+            "brave": ("brave", "brave-browser"),
+        }
+        for name in ("chrome", "msedge", "brave"):
+            for candidate in platform_paths.get(name, []):
+                if Path(os.path.expandvars(candidate)).expanduser().exists():
+                    return name
+            for command in commands.get(name, ()):
+                if shutil.which(command):
+                    return name
+        return None
+
     for name, candidates in _BROWSER_PATHS.items():
         if sys.platform == "win32" and any(
             # expandvars, because a per-user install path is written with
@@ -469,7 +531,9 @@ class BrowserController(NavigationBackend):
             self._headless = env_headless.lower() in ("1", "true", "yes")
         else:
             self._headless = headless
-        self._profile_dir = profile_dir or os.environ.get("ORVIMA_PROFILE", DEFAULT_PROFILE)
+        self._profile_dir = str(
+            Path(os.path.expandvars(profile_dir or os.environ.get("ORVIMA_PROFILE", DEFAULT_PROFILE))).expanduser()
+        )
         self._attach = attach or os.environ.get("ORVIMA_ATTACH", "") or None
         self._attach_tab = attach_tab or os.environ.get("ORVIMA_ATTACH_TAB", "") or ""
         self._channel = None if self._attach else detect_channel()
@@ -478,14 +542,19 @@ class BrowserController(NavigationBackend):
         self._pw = None
         self._closed = False
         self._started = False
+        self._owns_context = False
         # What each ref described at the last snapshot. Populated by snapshot()
         # and consulted before every ref-based action.
         self._registry = RefRegistry()
         # ref -> frame index, so an f2:e1 ref is looked up in frame 2.
         self._ref_frames: dict[str, int] = {}
         # Where downloads are saved. Overridable per instance.
-        self._download_dir = download_dir or os.environ.get(
-            "ORVIMA_DOWNLOAD_DIR", str(Path.home() / ".orvima" / "downloads")
+        self._download_dir = str(
+            Path(
+                os.path.expandvars(
+                    download_dir or os.environ.get("ORVIMA_DOWNLOAD_DIR", str(Path.home() / ".orvima" / "downloads"))
+                )
+            ).expanduser()
         )
         # A record of every eval that ran, for an agent holding arbitrary JS on a
         # logged-in page. Bounded so it cannot become a leak.
@@ -493,9 +562,11 @@ class BrowserController(NavigationBackend):
         self.eval_audit_limit = 200
 
     def start(self) -> None:
-        if self._started:
+        if self._started and self._pw is not None and self._context is not None and self.page is not None:
             return
-        self._started = True
+        self._started = False
+        if self._closed:
+            raise BrowserError("browser controller is closed; create a new controller")
         from playwright.sync_api import sync_playwright
 
         self._pw = sync_playwright().start()
@@ -557,7 +628,10 @@ class BrowserController(NavigationBackend):
                 )
             pages = self._context.pages
             self.page = pages[0] if pages else self._context.new_page()
-            self._goto(self._base_url)
+            if not self._attach:
+                self._goto(self._base_url)
+            self._owns_context = not bool(self._attach)
+            self._started = True
         except BrowserError:
             self._teardown_playwright()
             raise  # already actionable - don't bury the real cause
@@ -581,6 +655,8 @@ class BrowserController(NavigationBackend):
             self._pw = None
         self._context = None
         self.page = None
+        self._started = False
+        self._owns_context = False
 
     #: Playwright reports a real load state, so this backend states one.
     REPORTS_LOAD_STATE = True
@@ -1413,7 +1489,8 @@ class BrowserController(NavigationBackend):
 
     def close(self) -> None:
         try:
-            if self._context is not None:
+            # Never close a context Orvima does not own (CDP attach mode).
+            if self._context is not None and self._owns_context:
                 self._context.close()
         except Exception:  # pragma: no cover
             pass
