@@ -25,7 +25,7 @@ from orvima.dashboard import PAGE
 
 fastapi_testclient = pytest.importorskip("fastapi.testclient", reason="fastapi testclient unavailable")
 
-from fastapi.testclient import TestClient  # noqa: E402
+from _shim_tc import TestClient  # noqa: E402
 
 from orvima import api  # noqa: E402
 

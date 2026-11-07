@@ -9,7 +9,16 @@ def test_norm():
 
 
 def test_element_identity_dataclass():
-    ei = ElementIdentity(ref="r1", role="button", label="Submit", text="Submit", tag="button", ordinal=1, raw_label="Submit", raw_text="Submit")
+    ei = ElementIdentity(
+        ref="r1",
+        role="button",
+        label="Submit",
+        text="Submit",
+        tag="button",
+        ordinal=1,
+        raw_label="Submit",
+        raw_text="Submit",
+    )
     assert ei.tag == "button"
     assert ei.text == "submit"
 

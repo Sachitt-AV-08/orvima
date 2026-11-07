@@ -1,6 +1,6 @@
 """Tests for orvima.mcp_server module."""
 
-from orvima.mcp_server import _bind, register_tools, register_module_tools, _bind_simple
+from orvima.mcp_server import _bind, _bind_simple, register_module_tools, register_tools
 
 
 def test_bind_is_callable():

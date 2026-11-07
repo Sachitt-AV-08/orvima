@@ -22,7 +22,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
-from fastapi.testclient import TestClient
+from _shim_tc import TestClient
 
 from orvima import api, cli, mcp_server
 from orvima.agent import Session, SessionStore

@@ -1,6 +1,6 @@
 """Tests for orvima.expectations module."""
 
-from orvima.expectations import Expectation, ExpectationSet, ExpectationChecker, VerificationReport
+from orvima.expectations import Expectation, ExpectationChecker, ExpectationSet, VerificationReport
 
 
 def test_expectation_class():

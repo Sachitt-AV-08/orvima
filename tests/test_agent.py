@@ -1,6 +1,6 @@
 """Tests for orvima.agent module."""
 
-from orvima.agent import EventBus, Session, SessionStore, AgentLoop, _redact_sensitive, _redact_html
+from orvima.agent import AgentLoop, EventBus, SessionStore, _redact_html, _redact_sensitive
 
 
 def test_session_bus():

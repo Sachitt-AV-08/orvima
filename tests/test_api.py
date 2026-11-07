@@ -1,6 +1,6 @@
 """Tests for orvima.api module."""
 
-from orvima.api import create_app, app, configured_token, token_ok, gate_status
+from orvima.api import app, configured_token, create_app, gate_status, token_ok
 
 
 def test_create_app():

@@ -1,6 +1,6 @@
 """Tests for orvima.media module."""
 
-from orvima.media import _parse_vtt, _parse_srt
+from orvima.media import _parse_srt, _parse_vtt
 
 
 def test_parse_vtt_basic():

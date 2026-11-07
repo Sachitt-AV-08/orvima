@@ -1,6 +1,6 @@
 """Tests for orvima.sentinel_gate module."""
 
-from orvima.sentinel_gate import make_gate, GateResult
+from orvima.sentinel_gate import GateResult, make_gate
 
 
 def test_make_gate_off():

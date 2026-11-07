@@ -249,7 +249,7 @@ class TestTheApprovalEndpointItself:
 
     @pytest.fixture
     def client(self, monkeypatch):
-        from fastapi.testclient import TestClient
+        from _shim_tc import TestClient
 
         monkeypatch.setenv("ORVIMA_API_TOKEN", "hunter2")
         api = importlib.reload(importlib.import_module("orvima.api"))

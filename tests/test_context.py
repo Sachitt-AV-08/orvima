@@ -1,6 +1,6 @@
 """Tests for orvima.context module."""
 
-from orvima.context import _clip, compact_row, full_row, render_transcript, measure, ContextBudget
+from orvima.context import ContextBudget, _clip, compact_row, full_row, measure, render_transcript
 
 
 def test_clip_short():
@@ -32,7 +32,9 @@ def test_render_transcript_empty():
 
 
 def test_render_transcript_with_history():
-    history = [{"kind": "tool", "tool": "browse_navigate", "args": {"url": "https://example.com"}, "result": {"ok": True}}]
+    history = [
+        {"kind": "tool", "tool": "browse_navigate", "args": {"url": "https://example.com"}, "result": {"ok": True}},
+    ]
     result = render_transcript(history)
     assert isinstance(result, str)
 

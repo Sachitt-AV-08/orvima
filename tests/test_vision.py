@@ -1,6 +1,6 @@
 """Tests for orvima.vision module."""
 
-from orvima.vision import _tesseract_available, _require_cv, vision_ocr, vision_find_text
+from orvima.vision import _require_cv, _tesseract_available, vision_find_text, vision_ocr
 
 
 def test_tesseract_available():

@@ -1,13 +1,13 @@
 """Tests for orvima.compute module."""
 
 from orvima.compute import (
-    math_solve,
-    math_simplify,
     math_derivative,
     math_integral,
     math_plot_data,
-    unit_convert,
+    math_simplify,
+    math_solve,
     science_constants,
+    unit_convert,
 )
 
 
@@ -65,7 +65,8 @@ def test_math_plot_data():
 def test_unit_convert_length():
     result = unit_convert(100, "cm", "m")
     assert result["ok"] is True
-    assert result["result"] == 1.0 or result["value"] == 1.0 or abs(result.get("result", result.get("value", 0)) - 1.0) < 0.001
+    result_value = result.get("result", result.get("value", 0))
+    assert result["result"] == 1.0 or result["value"] == 1.0 or abs(result_value - 1.0) < 0.001
 
 
 def test_unit_convert_temperature():

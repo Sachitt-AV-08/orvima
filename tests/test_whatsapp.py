@@ -1,6 +1,6 @@
 """Tests for orvima.whatsapp module."""
 
-from orvima.whatsapp import whatsapp_status, whatsapp_list_chats, whatsapp_read, whatsapp_send, whatsapp_react
+from orvima.whatsapp import whatsapp_list_chats, whatsapp_react, whatsapp_read, whatsapp_send, whatsapp_status
 
 
 def test_whatsapp_status_returns_dict():

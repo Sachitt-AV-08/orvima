@@ -1,6 +1,6 @@
 """Tests for orvima.voice module."""
 
-from orvima.voice import voice_list_styles, voice_list_emotions, voice_set_style, voice_set_emotion
+from orvima.voice import voice_list_emotions, voice_list_styles, voice_set_emotion, voice_set_style
 
 
 def test_voice_list_styles():

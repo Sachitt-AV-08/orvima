@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from fastapi.testclient import TestClient
+from _shim_tc import TestClient
 
 from orvima import api
 from orvima.sentinel_gate import make_gate

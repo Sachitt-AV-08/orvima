@@ -1,6 +1,6 @@
 """Tests for orvima.backend module."""
 
-from orvima.backend import NavigationBackend, ExpectationChecker, ExpectationSet, BrowserError
+from orvima.backend import BrowserError, ExpectationChecker, ExpectationSet, NavigationBackend
 
 
 def test_navigation_backend_class():

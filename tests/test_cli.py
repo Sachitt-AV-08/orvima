@@ -1,6 +1,6 @@
 """Tests for orvima.cli module."""
 
-from orvima.cli import is_loopback, check_bind, resolve_mode, _mode_env
+from orvima.cli import _mode_env, check_bind, is_loopback, resolve_mode
 
 
 def test_is_loopback_true():
@@ -28,3 +28,6 @@ def test_mode_env():
         _mode_env("demo")
     except Exception:
         pass  # just no crash
+    from orvima import api
+
+    api.set_default_session_mode(None)  # keep the unit test from polluting sibling tests

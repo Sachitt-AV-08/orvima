@@ -1,6 +1,6 @@
 """Tests for orvima.gate module (gate_* tools)."""
 
-from orvima.gate import gate_classify, gate_describe_action, gate_risk_concepts, GATE_TOOLS
+from orvima.gate import GATE_TOOLS, gate_classify, gate_describe_action, gate_risk_concepts
 
 
 def test_gate_classify_safe():

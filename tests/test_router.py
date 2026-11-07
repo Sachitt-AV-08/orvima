@@ -1,9 +1,7 @@
 """Tests for orvima.router module."""
 
-import os
-import tempfile
 
-from orvima.router import goal_list_recipes, goal_route, _load_recipes
+from orvima.router import _load_recipes, goal_list_recipes, goal_route
 
 
 def test_load_recipes_empty_dir():

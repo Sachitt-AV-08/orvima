@@ -1,6 +1,6 @@
 """Unit tests for orvima.tool_annotations module."""
 
-from orvima.tool_annotations import for_tool, all_names
+from orvima.tool_annotations import all_names, for_tool
 
 
 def test_for_tool_known():

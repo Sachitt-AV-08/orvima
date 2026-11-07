@@ -1,6 +1,6 @@
 """Tests for orvima.mail module."""
 
-from orvima.mail import _extract_body, _need_creds, _env
+from orvima.mail import _env, _extract_body, _need_creds
 
 
 def test_env_returns_none_for_missing():
@@ -30,7 +30,7 @@ def test_extract_body_plain():
 
 
 def test_mail_send_returns_dict():
-    result = mail_send_stub() if False else None
+    result = None
     from orvima.mail import mail_send
     result = mail_send(to="test@example.com", subject="Test", body="Hello")
     assert isinstance(result, dict)

@@ -264,7 +264,7 @@ def test_channel_detection(monkeypatch):
 
 
 def test_api_sessions_and_goal(monkeypatch):
-    from fastapi.testclient import TestClient
+    from _shim_tc import TestClient
 
     from orvima import __version__
     from orvima.api import app
@@ -312,7 +312,7 @@ def test_a_run_with_no_classifier_is_held_for_a_human_not_handed_back(monkeypatc
     dependency presents at runtime. Asserting the *held* outcome is what makes
     this a contract test rather than a restatement of the CI failure.
     """
-    from fastapi.testclient import TestClient
+    from _shim_tc import TestClient
 
     from orvima import api, sentinel_gate
     from orvima.api import app
