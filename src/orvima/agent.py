@@ -622,7 +622,7 @@ class SessionStore:
 
     def create(self, mode: str, start_url: str = "", goal: str = "") -> Session:
         sess = Session(
-            id=uuid.uuid4().hex[:12],
+            id=str(uuid.uuid4()),
             mode=mode,
             browser=_make_browser(mode, start_url),
             start_url=start_url,
@@ -653,6 +653,43 @@ class SessionStore:
     def close_all(self) -> None:
         for sess in list(self._sessions.values()):
             sess.close()
+
+
+class LazyBrowser:
+    """Defer browser creation until the first use in the calling thread.
+
+    Playwright's sync API is tied to the thread/loop that creates it. Creating
+    the browser eagerly during session construction (often in an HTTP worker
+    thread) and then reusing it in an agent or MCP server thread reintroduces
+    that cross-thread failure. Lazy creation moves ownership to the worker that
+    actually drives the browser.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._browser = None
+        self._lock = threading.Lock()
+
+    def resolve(self) -> Any:
+        if self._browser is None:
+            with self._lock:
+                if self._browser is None:
+                    self._browser = _make_browser(self._session.mode, self._session.start_url)
+        return self._browser
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.resolve(), name)
+
+    def close(self) -> None:
+        browser = self._browser
+        self._browser = None
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
 
 
 def _make_browser(mode: str, start_url: str = "") -> Any:

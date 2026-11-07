@@ -238,10 +238,33 @@ def get_gate(rebuild: bool = False):
         return _gate
 
 
+# A per-process override set by the CLI (`orvima serve --mode ...`) so that a
+# server started in demo mode actually creates demo sessions without polluting
+# the OS environment with ORVIMA_MODE. Readers are env-first for explicit user
+# control, then this override, then a safe "real" default.
+_SESSION_MODE_OVERRIDE: str | None = None
+
+
+def set_default_session_mode(mode: str | None) -> None:
+    """Set the default mode for sessions created on this process.
+
+    Used by `orvima serve --mode`; the API model itself stays validated.
+    """
+    global _SESSION_MODE_OVERRIDE
+    if mode in ("demo", "real"):
+        _SESSION_MODE_OVERRIDE = mode
+    elif mode is None:
+        _SESSION_MODE_OVERRIDE = None
+
+
+def _default_session_mode() -> str:
+    return os.environ.get("ORVIMA_MODE", _SESSION_MODE_OVERRIDE or "real")
+
+
 class CreateSession(BaseModel):
     # real, not demo. A client that posts nothing must get a real browser, not a
     # scripted acme.dev that answers ok:true about sites it never opened.
-    mode: str = Field(default="real", pattern="^(demo|real)$")
+    mode: str = Field(default_factory=_default_session_mode, pattern="^(demo|real)$")
     # Empty by default, so a session with no URL is not silently parked on a
     # fictional storefront. Set it, or let ORVIMA_START_URL decide.
     start_url: str = ""
